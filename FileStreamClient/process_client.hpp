@@ -24,12 +24,8 @@ private:
   Output &m_out;
   net::NetClient m_client;
 
-  ui::Button m_minBtn;
-  ui::Button m_clsBtn;
-
 public:
-  ProcessClient(Output &out)
-      : m_out(out), m_minBtn("btn_min.graw"), m_clsBtn("btn_exit.graw") {}
+  ProcessClient(Output &out) : m_out(out) {}
 
   void processCommand(const std::string &command) {
     if (util::icompare(command, "-help")) {
@@ -130,8 +126,6 @@ public:
   void sendOutput(const std::string &data) { m_out.sendOutput(data); }
 
   void update() {
-	  // Render the buttons, if this is even the right place to do it.
-	  //m_clsBtn.draw(screen);
     // Check if we can get any data from the net client.
     std::vector<std::string> text;
     m_client.GetMessages(text);

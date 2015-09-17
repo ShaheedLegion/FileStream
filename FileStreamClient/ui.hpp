@@ -167,7 +167,6 @@ public:
     m_screen.GetCharInput(chars);
     bool add{util::MutateString(keys, chars, 60, &m_scratch)};
     if (add && !m_scratch.empty()) {
-      //addText(m_scratch);
       process();
       m_scratch = "";
     } else {
@@ -175,9 +174,9 @@ public:
       temp.push_back(m_cursor.getCursor());
       m_screen.RenderText(temp, 20, yPos);
     }
-
-    Panel::update();
   }
+
+  void commit() { Panel::update(); }
 
 protected:
   Background m_bg;
@@ -215,7 +214,25 @@ public:
     return (shouldReturn && !m_text.empty());
   }
 
+  // Returns true if this button has been clicked.
+  bool handleMouseInput(int x, int y, bool l, bool m, bool r) {
+    // Buttons (for now) only deal with left mouse button input.
+    if (!l)
+      return false;
+
+    // If left button is pressed, check if it's within bounds.
+    if (x >= m_x && x <= m_x + m_texture.bounds[0]) {
+      if (y >= m_y && y <= m_y + m_texture.bounds[1]) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
   void draw(detail::RendererSurface &surface, int x, int y) {
+    m_x = x;
+    m_y = y;
     // Button is always rendered at original size.
     detail::Uint32 *buffer = surface.GetPixels();
     int sw = surface.GetWidth();
@@ -236,6 +253,8 @@ public:
   }
 
 protected:
+  int m_x;
+  int m_y;
   int m_textLimit;
   texture m_texture;
   std::vector<std::string> m_text;

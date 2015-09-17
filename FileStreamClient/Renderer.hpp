@@ -135,12 +135,22 @@ public:
 
   // Get/Set the state of the app mouse tracking/info
   void HandleMouse(int x, int y, bool l, bool m, bool r) {
-    m_mouse.set(x, y, l, m, r);
+    // Unfortunately our window is soft scaled, so we will have to soft scale
+    // the mouse coordinates to appear to match the original window dimensions.
+    float scaleX = static_cast<float>(_WIDTH) / static_cast<float>(_WW);
+    float scaleY = static_cast<float>(_HEIGHT) / static_cast<float>(_WH);
+
+    int scaledMouseX = static_cast<int>(static_cast<float>(x) * scaleX);
+    int scaledMouseY = static_cast<int>(static_cast<float>(y) * scaleY);
+
+    m_mouse.set(scaledMouseX, scaledMouseY, l, m, r);
   }
 
   void QueryMouse(int &x, int &y, bool &l, bool &m, bool &r) {
     m_mouse.get(x, y, l, m, r);
   }
+
+  void ClearMouse() { m_mouse.set(0, 0, false, false, false); }
 
 protected:
   unsigned char *m_pixels;
@@ -262,17 +272,18 @@ void HandleText(WPARAM wp, LPARAM lp) {
   g_renderer->screen.HandleText(wp, lp);
 }
 
-void HandleMouse(WPARAM wp, LPARAM lp) {
+void HandleMouse(WPARAM wp, LPARAM lp, bool l, bool r, bool m) {
   if (!g_renderer)
     return;
 
   int x = GET_X_LPARAM(lp);
   int y = GET_Y_LPARAM(lp);
-  bool left = (wp & MK_LBUTTON);
-  bool middle = (wp & MK_MBUTTON);
-  bool right = (wp & MK_RBUTTON);
+  // These are virtual keycodes - useful for keyboard mouse emulation.
+  // bool left = (wp & MK_LBUTTON);
+  // bool middle = (wp & MK_MBUTTON);
+  // bool right = (wp & MK_RBUTTON);
 
-  g_renderer->screen.HandleMouse(x, y, left, middle, right);
+  g_renderer->screen.HandleMouse(x, y, l, m, r);
 }
 
 long __stdcall WindowProcedure(HWND window, unsigned int msg, WPARAM wp,
@@ -290,9 +301,20 @@ long __stdcall WindowProcedure(HWND window, unsigned int msg, WPARAM wp,
   case WM_KEYUP:
     HandleKey(wp, false);
     return 0L;
-  case WM_MOUSEMOVE:
-    HandleMouse(wp, lp);
+  case WM_LBUTTONDOWN:
+    HandleMouse(wp, lp, true, false, false);
     return 0L;
+  case WM_MBUTTONDOWN:
+    HandleMouse(wp, lp, false, true, false);
+    return 0L;
+  case WM_RBUTTONDOWN:
+    HandleMouse(wp, lp, false, false, true);
+    return 0L;
+  case WM_MOUSEMOVE:
+  case WM_LBUTTONUP:
+  case WM_MBUTTONUP:
+  case WM_RBUTTONUP:
+    HandleMouse(wp, lp, false, false, false);
   default:
     return DefWindowProc(window, msg, wp, lp);
   }
