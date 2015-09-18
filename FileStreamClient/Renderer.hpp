@@ -137,13 +137,17 @@ public:
   void HandleMouse(int x, int y, bool l, bool m, bool r) {
     // Unfortunately our window is soft scaled, so we will have to soft scale
     // the mouse coordinates to appear to match the original window dimensions.
-    float scaleX = static_cast<float>(_WIDTH) / static_cast<float>(_WW);
-    float scaleY = static_cast<float>(_HEIGHT) / static_cast<float>(_WH);
+    int scaledX, scaledY;
+    getScaledWindowCoords(x, y, scaledX, scaledY);
 
-    int scaledMouseX = static_cast<int>(static_cast<float>(x) * scaleX);
-    int scaledMouseY = static_cast<int>(static_cast<float>(y) * scaleY);
+    m_mouse.set(scaledX, scaledY, l, m, r);
+  }
 
-    m_mouse.set(scaledMouseX, scaledMouseY, l, m, r);
+  bool HandleDrag(int x, int y) {
+    int scaledX, scaledY;
+    getScaledWindowCoords(x, y, scaledX, scaledY);
+
+    return m_mouse.testDragArea(scaledX, scaledY);
   }
 
   void QueryMouse(int &x, int &y, bool &l, bool &m, bool &r) {
@@ -151,6 +155,10 @@ public:
   }
 
   void ClearMouse() { m_mouse.set(0, 0, false, false, false); }
+
+  void InitializeDragArea(int x, int y, int w, int h) {
+    m_mouse.setDragArea(x, y, w, h);
+  }
 
 protected:
   unsigned char *m_pixels;
@@ -184,9 +192,19 @@ protected:
     bool m_m;
     bool m_r;
 
+    // Dragging info
+    int m_dragX;
+    int m_dragY;
+    int m_dragW;
+    int m_dragH;
+
   public:
     mouseInfo() : m_x(0), m_y(0), m_l(false), m_m(false), m_r(false) {
       InitializeCriticalSection(&sec);
+      m_dragX = 0;
+      m_dragY = 0;
+      m_dragW = 0;
+      m_dragH = 0;
     }
 
     ~mouseInfo() { DeleteCriticalSection(&sec); }
@@ -210,7 +228,31 @@ protected:
       r = m_r;
       LeaveCriticalSection(&sec);
     }
+
+    void setDragArea(int x, int y, int w, int h) {
+      m_dragX = x;
+      m_dragY = y;
+      m_dragW = w;
+      m_dragH = h;
+    }
+
+    bool testDragArea(int mx, int my) {
+      if (mx >= m_dragX && m_x <= m_dragX + m_dragW) {
+        if (my >= m_dragY && m_y <= m_dragY + m_dragH)
+          return true;
+      }
+
+      return false;
+    }
   };
+
+  void getScaledWindowCoords(int x, int y, int &sx, int &sy) {
+    float scaleX = static_cast<float>(_WIDTH) / static_cast<float>(_WW);
+    float scaleY = static_cast<float>(_HEIGHT) / static_cast<float>(_WH);
+
+    sx = static_cast<int>(static_cast<float>(x) * scaleX);
+    sy = static_cast<int>(static_cast<float>(y) * scaleY);
+  }
 
   mouseInfo m_mouse;
   std::vector<textInfo> m_textInfo;
@@ -286,6 +328,13 @@ void HandleMouse(WPARAM wp, LPARAM lp, bool l, bool r, bool m) {
   g_renderer->screen.HandleMouse(x, y, l, m, r);
 }
 
+bool HandleDrag(WPARAM wp, LPARAM lp, int x, int y) {
+  if (!g_renderer)
+    return false;
+
+  return g_renderer->screen.HandleDrag(x, y);
+}
+
 long __stdcall WindowProcedure(HWND window, unsigned int msg, WPARAM wp,
                                LPARAM lp) {
   switch (msg) {
@@ -315,6 +364,18 @@ long __stdcall WindowProcedure(HWND window, unsigned int msg, WPARAM wp,
   case WM_MBUTTONUP:
   case WM_RBUTTONUP:
     HandleMouse(wp, lp, false, false, false);
+    return 0L;
+  case WM_NCHITTEST: {
+    LRESULT hit = DefWindowProc(window, msg, wp, lp);
+    if (hit == HTCLIENT) {
+      POINT point;
+      GetCursorPos(&point);
+      if (ScreenToClient(window, &point) &&
+          HandleDrag(wp, lp, point.x, point.y))
+        hit = HTCAPTION;
+      return hit;
+    }
+  } break;
   default:
     return DefWindowProc(window, msg, wp, lp);
   }

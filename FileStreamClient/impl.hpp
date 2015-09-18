@@ -49,7 +49,8 @@ class RenditionPanel : public ui::InputPanel, public game::Output {
 public:
   RenditionPanel(detail::RendererSurface &surface)
       : InputPanel(surface, "bg.graw"), m_processor(*this),
-        m_minBtn("btn_min.graw"), m_clsBtn("btn_exit.graw") {
+        m_minBtn("btn_min.graw"), m_dragBtn("btn_drag.graw"),
+        m_clsBtn("btn_exit.graw") {
 
     addText("Welcome to NetChatmium: by Shaheed Abdol. 2015");
     addText("This is a general c++ chat application.");
@@ -79,8 +80,9 @@ public:
     ui::InputPanel::update();
 
     // Render elements on top of interface.
-    m_minBtn.draw(m_screen, 750, 10);
-    m_clsBtn.draw(m_screen, 750, 60);
+    m_minBtn.draw(m_screen, 760, 10);
+    m_dragBtn.draw(m_screen, 760, 60);
+    m_clsBtn.draw(m_screen, 760, 110);
 
     // Now commit those changes to the ui.
     ui::InputPanel::commit();
@@ -104,13 +106,18 @@ public:
   virtual void flashOutput() override { m_screen.FlashWindow(true); }
 
   void clearOutput() override { clearText(); }
-
+   
 protected:
   command_processor m_processor;
   ui::Button m_minBtn;
+  ui::Button m_dragBtn;
   ui::Button m_clsBtn;
 
   void processButtonInput() {
+    // First make sure the screen drag area is initialized.
+    m_screen.InitializeDragArea(m_dragBtn.getX(), m_dragBtn.getY(),
+                                m_dragBtn.getW(), m_dragBtn.getH());
+
     // Process things the buttons should do.
     int mx, my;
     bool l, m, r;

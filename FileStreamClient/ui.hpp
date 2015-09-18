@@ -252,6 +252,11 @@ public:
     }
   }
 
+  int getX() const { return m_x; }
+  int getY() const { return m_y; }
+  int getW() const { return m_texture.bounds[0]; }
+  int getH() const { return m_texture.bounds[1]; }
+
 protected:
   int m_x;
   int m_y;
