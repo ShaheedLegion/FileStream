@@ -4,8 +4,9 @@
 #ifndef PROCESS_CLIENT
 #define PROCESS_CLIENT
 
-#include <sstream>
 #include "../chat_common.hpp"
+#include <sstream>
+#include <commdlg.h>
 
 namespace game {
 
@@ -23,6 +24,38 @@ class ProcessClient {
 private:
   Output &m_out;
   net::NetClient m_client;
+
+  bool GetFileName(std::string &name, std::string &path) {
+    char buf[MAX_PATH];
+    char nbuf[MAX_PATH];
+    ZeroMemory(buf, MAX_PATH);
+    ZeroMemory(nbuf, MAX_PATH);
+
+    OPENFILENAME ofn;
+    ZeroMemory(&ofn, sizeof(OPENFILENAME));
+
+    ofn.lStructSize = sizeof(OPENFILENAME);
+    ofn.lpstrFilter = "All Files\0*.*\0\0";
+    ofn.lpstrFile = buf;
+    ofn.lpstrFileTitle = nbuf;
+    ofn.nMaxFile = MAX_PATH;
+    ofn.nMaxFileTitle = MAX_PATH;
+    ofn.Flags = OFN_DONTADDTORECENT | OFN_EXPLORER | OFN_FILEMUSTEXIST |
+                OFN_HIDEREADONLY | OFN_PATHMUSTEXIST;
+
+    if (GetOpenFileName(&ofn)) {
+      // Send the path on to the comms handler.
+      int plen = strlen(buf);
+      path.assign(buf, plen);
+
+      int nlen = strlen(nbuf);
+      name.assign(nbuf, nlen);
+      return true;
+    }
+
+    // The user cancelled file sendind.
+    return false;
+  }
 
 public:
   ProcessClient(Output &out) : m_out(out) {}
@@ -45,7 +78,8 @@ public:
       m_out.sendOutput("  -cls: Clear the console.");
       m_out.sendOutput("  -quit End the session.");
       m_out.sendOutput("    ");
-      m_out.sendOutput("Typing a message will send to all users be default.");
+      m_out.sendOutput("Typed messages are sent to all connected users.");
+      m_out.sendOutput("Unless you use the -pvt command.");
       return;
     } else if (util::icompare(command, "-name", true)) {
       setAlias(command);
@@ -106,13 +140,32 @@ public:
     // Ok, so we need some kind of singleton that can process this command.
     m_out.sendOutput("Fetching list from server....");
   }
+
   void sendPrivate(const std::string &command) {
     // Send the private message - preprocess for malformed user names.
+    std::string name;
+    std::string path;
+    if (GetFileName(name, path)) {
+      // Do something here to send the file.
+      return;
+    }
+
+    m_out.sendOutput("File sending cancelled.");
   }
+
   void sendFileGeneral() {
     // First prompt the user for a file ...
     // Perform the upload and display the file.
+    std::string name;
+    std::string path;
+    if (GetFileName(name, path)) {
+      // Do something here to send the file.
+      return;
+    }
+
+    m_out.sendOutput("Private file sending cancelled.");
   }
+
   void sendFileUser(const std::string &command) {
     // First preprocess the user to check for malformed input.
     // Prompt the user for the file...
