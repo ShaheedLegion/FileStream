@@ -46,6 +46,8 @@ There should also be a global queue for clients.
 
 namespace comms {
 
+#define SALT 0x16540000
+
 #define CHATMIUM_PORT_ST "54547"
 #define CHATMIUM_PORT_NR 54547
 // Alias is the first thing sent to the server.
@@ -151,7 +153,8 @@ void AssignMessage(char *stack, Header &header, std::string &data) {
 
   for (unsigned int i = 0; i < header.len; ++i) {
     unsigned int info = ntohl(buf[i]);
-    unsigned char ch = static_cast<unsigned char>(info);
+    unsigned int infoShift = (info - SALT);
+    unsigned char ch = static_cast<unsigned char>(infoShift);
     temp.push_back(ch);
   }
   data.assign(reinterpret_cast<char *>(&temp[0]), header.len);
@@ -285,7 +288,8 @@ public:
     upscaledData.push_back(htonl(packet.hdr.sequence));
 
     for (unsigned int i = 0; i < packet.hdr.len; ++i)
-      upscaledData.push_back(htonl(static_cast<unsigned int>(packet.data[i])));
+      upscaledData.push_back(htonl(static_cast<unsigned int>(packet.data[i]) +
+                             SALT));
 
     int bytes = send(s, reinterpret_cast<char *>(&upscaledData[0]),
                      upscaledData.size() * sizeof(unsigned int), 0);
