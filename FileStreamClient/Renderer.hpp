@@ -379,6 +379,8 @@ long __stdcall WindowProcedure(HWND window, unsigned int msg, WPARAM wp,
   default:
     return DefWindowProc(window, msg, wp, lp);
   }
+
+  return 0;
 }
 
 BOOL CALLBACK MonitorEnumProc(HMONITOR hMonitor, HDC hdcMonitor,

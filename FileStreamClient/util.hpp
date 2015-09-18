@@ -34,7 +34,7 @@ public:
 
 private:
   long m_rate;
-  long m_ticks;
+  long long m_ticks;
   std::chrono::system_clock::time_point start_time;
 };
 
@@ -45,11 +45,13 @@ void MutateString(std::vector<std::string> &text, std::pair<WPARAM, bool> &key,
     std::string temp;
     if (key.first >= 0x30 && key.first <= 0x39) {
       // Append number to the string.
-      if (limit == -1 || (limit != -1 && temp.size() < limit))
+      if (limit == -1 ||
+          (limit != -1 && static_cast<signed int>(temp.size()) < limit))
         temp.push_back(std::string::value_type(key.first));
     } else if (key.first >= 0x41 && key.first <= 0x5A) {
       // Append letter to the string.
-      if (limit == -1 || (limit != -1 && temp.size() < limit))
+      if (limit == -1 ||
+          (limit != -1 && static_cast<signed int>(temp.size()) < limit))
         temp.push_back(std::string::value_type(key.first));
     }
     if (!temp.empty())
@@ -63,11 +65,13 @@ void MutateString(std::vector<std::string> &text, std::pair<WPARAM, bool> &key,
     // VK_A - VK_Z are the same as ASCII 'A' - 'Z' (0x41 - 0x5A)
     if (key.first >= 0x30 && key.first <= 0x39) {
       // Append number to the string.
-      if (limit == -1 || (limit != -1 && str.size() < limit))
+      if (limit == -1 ||
+          (limit != -1 && static_cast<signed int>(str.size()) < limit))
         str.push_back(std::string::value_type(key.first));
     } else if (key.first >= 0x41 && key.first <= 0x5A) {
       // Append letter to the string.
-      if (limit == -1 || (limit != -1 && str.size() < limit))
+      if (limit == -1 ||
+          (limit != -1 && static_cast<signed int>(str.size()) < limit))
         str.push_back(std::string::value_type(key.first));
     } else if (key.first == VK_SPACE)
       str.push_back(std::string::value_type(' '));
@@ -92,7 +96,7 @@ bool MutateString(std::vector<std::pair<WPARAM, bool>> &keys,
       break;
     default:
       // Process displayable characters.
-      if (output->size() < limit)
+      if (static_cast<signed int>(output->size()) < limit)
         output->push_back(std::string::value_type(i.first));
       break;
     }
@@ -125,7 +129,7 @@ bool icompare(std::string const &a, std::string const &b,
 
   auto f_len = (a_len < b_len ? a_len : b_len);
 
-  for (int i = 0; i < f_len; ++i) {
+  for (int i = 0; i < static_cast<signed int>(f_len); ++i) {
     if (std::tolower(a[i]) != std::tolower(b[i]))
       return false;
   }
@@ -148,7 +152,7 @@ std::string split(std::string const &a, std::string const &b,
   auto f_len = a_len;
 
   std::stringstream ss;
-  for (int i = b_len; i < f_len; ++i) {
+  for (int i = b_len; i < static_cast<signed int>(f_len); ++i) {
     if (dumpSpace && a[i] == ' ')
       continue;
     ss << a[i];

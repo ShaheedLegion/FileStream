@@ -46,8 +46,8 @@ There should also be a global queue for clients.
 
 namespace comms {
 
-#define CHATMIUM_PORT_ST "54546"
-#define CHATMIUM_PORT_NR 54546
+#define CHATMIUM_PORT_ST "54547"
+#define CHATMIUM_PORT_NR 54547
 // Alias is the first thing sent to the server.
 #define PKT_ALIAS 0x00002
 #define PKT_ALIAS_ACK 0x00003
@@ -63,6 +63,10 @@ namespace comms {
 // The client sends a private message to the server.
 #define PKT_PVT 0x00008
 #define PKT_PVT_ACK 0x00009
+
+// The client requests the user list from the server.
+#define PKT_LST 0x00010
+#define PKT_LST_ACK 0x00011
 
 std::string CharToMessageType(unsigned short msgtype) {
   switch (msgtype) {
@@ -82,6 +86,10 @@ std::string CharToMessageType(unsigned short msgtype) {
     return "private";
   case PKT_PVT_ACK:
     return "private_ack";
+  case PKT_LST:
+    return "list";
+  case PKT_LST_ACK:
+    return "list_ack";
   }
   return "unk";
 }
@@ -103,6 +111,10 @@ unsigned short MessageTypeToChar(const std::string &type) {
     return PKT_PVT;
   if (type == "private_ack")
     return PKT_PVT_ACK;
+  if (type == "list")
+    return PKT_LST;
+  if (type == "list_ack")
+    return PKT_LST_ACK;
 
   return 0;
 }
@@ -137,7 +149,7 @@ void AssignMessage(char *stack, Header &header, std::string &data) {
 
   std::vector<char> temp;
 
-  for (int i = 0; i < header.len; ++i) {
+  for (unsigned int i = 0; i < header.len; ++i) {
     unsigned int info = ntohl(buf[i]);
     unsigned char ch = static_cast<unsigned char>(info);
     temp.push_back(ch);
@@ -272,7 +284,7 @@ public:
     upscaledData.push_back(htonl(packet.hdr.len));
     upscaledData.push_back(htonl(packet.hdr.sequence));
 
-    for (int i = 0; i < packet.hdr.len; ++i)
+    for (unsigned int i = 0; i < packet.hdr.len; ++i)
       upscaledData.push_back(htonl(static_cast<unsigned int>(packet.data[i])));
 
     int bytes = send(s, reinterpret_cast<char *>(&upscaledData[0]),
@@ -289,7 +301,7 @@ public:
                            std::vector<comms::Packet> &out,
                            std::vector<SOCKET> &sockets) {
     for (auto i : m_closedSockets) {
-      for (int j = 0; j < clients.size(); ++j) {
+      for (unsigned int j = 0; j < clients.size(); ++j) {
         if (clients[j].socket == i) {
           std::string alias = clients[j].alias;
           alias.append(" - has taken the blue pill.");
@@ -404,6 +416,23 @@ public:
           so.outboundMessages.push_back(ack);
 
           privateMessages.push_back(msg);
+        } break;
+        case PKT_LST: {
+          std::string user_list("Users on this server:|");
+          {
+            auto lst_it = m_clients.begin();
+            auto lst_eit = m_clients.end();
+            for (; lst_it != lst_eit; ++lst_it) {
+              user_list.append(lst_it->ip);
+              user_list.append(" : ");
+              user_list.append(lst_it->alias);
+              user_list.append("|");
+            }
+            comms::Packet ack{
+                {PKT_LST_ACK, 0, 0, 0, user_list.length(), msg.hdr.sequence},
+                user_list};
+            so.outboundMessages.push_back(ack);
+          }
         } break;
         }
       }
@@ -555,6 +584,18 @@ public:
     m_printQueue.push_back(message);
   }
 
+  void GetUserList() {
+    AutoLocker locker(m_mutex);
+    if (!m_connected) {
+      m_printQueue.push_back("You need to connect first.");
+      return;
+    }
+
+    m_printQueue.push_back("Fetching list from server....");
+    comms::Packet packet{{PKT_LST, 0, 0, 0, 0, GetNextSequence()}, ""};
+    m_threadOutQueue.push_back(packet);
+  }
+
   // Possibly disconnect here.
   ~NetClient() {}
 
@@ -664,6 +705,10 @@ public:
         std::cout << "Got general message." << std::endl;
         RemoveOutboundPacket(PKT_QRY);
         PvtAddPrintQueueHelper(in_it->data, erasePacket);
+      } else if (in_it->hdr.type == PKT_LST_ACK) {
+        std::cout << "Got list users Ack." << std::endl;
+        RemoveOutboundPacket(PKT_LST);
+        PvtAddPrintQueueHelper(in_it->data, erasePacket);
       }
 
       // We might miss one packet like this, but it's cool.
@@ -731,10 +776,15 @@ DWORD WINAPI ServerCommsConnections(LPVOID param) {
       std::vector<net::SocketData> &clients{server->GetClients()};
       for (auto &i : clients) {
         int bytesRead = recv(i.socket, stack, 2048, 0);
-        if (bytesRead > comms::HeaderSize) {
+        if (bytesRead >= comms::HeaderSize) {
           comms::Header hdr;
           AssignHeader(hdr, stack);
-          if (bytesRead >= comms::HeaderSize + (hdr.len * sizeof(int))) {
+
+          std::cout << "Got listing packet - type[" << hdr.type << "] len["
+                    << hdr.len << "]" << std::endl;
+
+          if (bytesRead >=
+              static_cast<int>(comms::HeaderSize + (hdr.len * sizeof(int)))) {
             comms::Packet packet{hdr, ""};
             AssignMessage(stack, hdr, packet.data);
             i.inboundMessages.push_back(packet);
@@ -778,7 +828,8 @@ DWORD WINAPI ClientCommsConnection(LPVOID param) {
       comms::Header hdr;
       AssignHeader(hdr, &packetData[0]);
 
-      if (packetDataSize >= comms::HeaderSize + (hdr.len * sizeof(int))) {
+      if (packetDataSize >=
+          static_cast<int>(comms::HeaderSize + (hdr.len * sizeof(int)))) {
         // We have a valid packet/s.
         comms::Packet pkt{hdr, ""};
         AssignMessage(reinterpret_cast<char *>(&packetData[0]), hdr, pkt.data);

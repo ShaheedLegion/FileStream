@@ -137,20 +137,12 @@ public:
   }
 
   void listUsers() {
-    // Ok, so we need some kind of singleton that can process this command.
-    m_out.sendOutput("Fetching list from server....");
+    m_client.GetUserList();
   }
 
   void sendPrivate(const std::string &command) {
-    // Send the private message - preprocess for malformed user names.
-    std::string name;
-    std::string path;
-    if (GetFileName(name, path)) {
-      // Do something here to send the file.
-      return;
-    }
-
-    m_out.sendOutput("File sending cancelled.");
+    // Parse out the user name .... we will need to send this to the server for
+    // processing.
   }
 
   void sendFileGeneral() {
@@ -167,10 +159,15 @@ public:
   }
 
   void sendFileUser(const std::string &command) {
-    // First preprocess the user to check for malformed input.
-    // Prompt the user for the file...
-    // Perform the upload and display the file.
-    // out.sendOutput("Put item where?");
+    // Send the private message - preprocess for malformed user names.
+    std::string name;
+    std::string path;
+    if (GetFileName(name, path)) {
+      // Do something here to send the file.
+      return;
+    }
+
+    m_out.sendOutput("File sending cancelled.");
   }
 
   void helpUser(game::Output &out) const {}
