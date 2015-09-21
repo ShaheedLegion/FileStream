@@ -70,6 +70,10 @@ namespace comms {
 #define PKT_LST 0x00010
 #define PKT_LST_ACK 0x00011
 
+// Client sending file to the server.
+#define PKT_FILE 0x00012
+#define PKT_FILE_ACK 0x00013
+
 std::string CharToMessageType(unsigned short msgtype) {
   switch (msgtype) {
   case PKT_ALIAS:
@@ -92,6 +96,10 @@ std::string CharToMessageType(unsigned short msgtype) {
     return "list";
   case PKT_LST_ACK:
     return "list_ack";
+  case PKT_FILE:
+    return "file";
+  case PKT_FILE_ACK:
+    return "file_ack";
   }
   return "unk";
 }
@@ -117,7 +125,10 @@ unsigned short MessageTypeToChar(const std::string &type) {
     return PKT_LST;
   if (type == "list_ack")
     return PKT_LST_ACK;
-
+  if (type == "file")
+    return PKT_FILE;
+  if (type == "file_ack")
+    return PKT_FILE_ACK;
   return 0;
 }
 
@@ -543,6 +554,60 @@ class NetClient : public NetCommon {
     trigger = true;
   }
 
+  // Partially locked
+  void transferFileInternal(const std::string &name, const std::string &path,
+                            const std::string &user) {
+    FILE *file{fopen(path.c_str(), "rb")};
+    // We simply block until we can allocate the entire file into our buffer.
+    if (!file) {
+      AutoLocker locker(m_mutex);
+      m_printQueue.push_back("Could not open the file");
+      return;
+    }
+
+    std::vector<comms::Packet> lFilePieces;
+    comms::Packet initial{{PKT_FILE, 0, 0, 0, 0, GetNextSequence()}, ""};
+    std::string name_user{name};
+    if (!user.empty()) {
+      name_user.append("|");
+      name_user.append(user);
+      initial.hdr.flags = 1; // set flags to 1 to indicate it's special.
+    }
+
+    initial.data = name_user;
+    initial.hdr.len = name_user.length();
+
+    // Loop and read the file in discrete chunks.
+    int fileSize{0};
+    fseek(file, 0, SEEK_END);
+    fileSize = ftell(file);
+    fseek(file, 0, SEEK_SET);
+
+    // Discover how many chunks we will send.
+    int chunks =
+        static_cast<int>((static_cast<float>(fileSize) /
+                          static_cast<float>(2048 - comms::HeaderSize)) +
+                         1);
+    initial.hdr.parts = chunks;
+    lFilePieces.push_back(initial);
+
+    char buf[2048 - comms::HeaderSize];
+    // Loop and push the read pieces into our local vector.
+    for (int i = 0; i < chunks; ++i) {
+      int bytesRead = fread(buf, 1, 2048 - comms::HeaderSize, file);
+
+      comms::Packet next{
+          {PKT_FILE, 0, chunks, i + 1, bytesRead, GetNextSequence()}, ""};
+      next.data.assign(buf, bytesRead);
+      lFilePieces.push_back(next);
+    }
+
+    AutoLocker locker(m_mutex);
+    m_threadOutQueue.insert(m_threadOutQueue.end(), lFilePieces.begin(),
+                            lFilePieces.end());
+    fclose(file);
+  }
+
 public:
   // Don't start up any threads.
   NetClient()
@@ -598,6 +663,15 @@ public:
     m_printQueue.push_back("Fetching list from server....");
     comms::Packet packet{{PKT_LST, 0, 0, 0, 0, GetNextSequence()}, ""};
     m_threadOutQueue.push_back(packet);
+  }
+
+  void SendFile(const std::string &name, const std::string &path) {
+    std::string user = "";
+    transferFileInternal(name, path, user);
+  }
+  void SendFileUser(const std::string &name, const std::string &path,
+                    const std::string &user) {
+    transferFileInternal(name, path, user);
   }
 
   // Possibly disconnect here.

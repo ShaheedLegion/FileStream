@@ -152,6 +152,7 @@ public:
     std::string path;
     if (GetFileName(name, path)) {
       // Do something here to send the file.
+      m_client.SendFile(name, path);
       return;
     }
 
@@ -160,10 +161,12 @@ public:
 
   void sendFileUser(const std::string &command) {
     // Send the private message - preprocess for malformed user names.
+    std::string user{util::split(command, "-pfil", true)};
     std::string name;
     std::string path;
     if (GetFileName(name, path)) {
       // Do something here to send the file.
+      m_client.SendFileUser(name, path, user);
       return;
     }
 
