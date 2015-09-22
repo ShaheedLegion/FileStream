@@ -19,6 +19,6 @@ DWORD WINAPI Update(LPVOID lpParameter) {
 }
 
 int main(int argc, char *argv[]) {
-  Renderer renderer("Rendition", &Update, nullptr);
+  Renderer renderer("Rendition", &Update, nullptr, true);
   return 0;
 }

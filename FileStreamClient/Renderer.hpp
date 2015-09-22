@@ -279,7 +279,7 @@ public:
 
 public:
   Renderer(const char *const className, LPTHREAD_START_ROUTINE callback,
-           detail::IBitmapRenderer *renderer);
+           detail::IBitmapRenderer *renderer, bool showConsole);
 
   ~Renderer() {
     updateThread.Join();
@@ -399,7 +399,7 @@ BOOL CALLBACK MonitorEnumProc(HMONITOR hMonitor, HDC hdcMonitor,
 
 // Implementation of the renderer functions.
 Renderer::Renderer(const char *const className, LPTHREAD_START_ROUTINE callback,
-                   detail::IBitmapRenderer *renderer)
+                   detail::IBitmapRenderer *renderer, bool showConsole)
     : screen(_WIDTH, _HEIGHT, _BPP, renderer), updateThread(callback) {
   forward::g_renderer = this;
 
@@ -479,7 +479,10 @@ Renderer::Renderer(const char *const className, LPTHREAD_START_ROUTINE callback,
       SelectObject(hImgDC, hImg);
 
       SetBuffer(bits, windowDC, hImgDC);
-      ShowWindow(GetConsoleWindow(), SW_HIDE);
+
+      if (!showConsole)
+        ShowWindow(GetConsoleWindow(), SW_HIDE);
+
       ShowWindow(window, SW_SHOWDEFAULT);
       MSG msg;
       while (GetMessage(&msg, 0, 0, 0) && IsRunning()) {

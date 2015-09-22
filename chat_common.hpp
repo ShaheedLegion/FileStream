@@ -140,6 +140,7 @@ struct Header {
   unsigned int current;  // current part.
   unsigned int len;      // length of packet data.
   unsigned int sequence; // sequence tracker for packets.
+  unsigned int id;       // similar to flags, but used for files.
 };
 
 const int HeaderSize = sizeof(Header);
@@ -148,6 +149,12 @@ const int HeaderSize = sizeof(Header);
 struct Packet {
   Header hdr;
   std::string data;
+};
+
+struct OpenFileData {
+  unsigned int id;
+  FILE *file;
+  std::string path;
 };
 
 // Try to assign the data to the packet message.
@@ -221,6 +228,23 @@ class NetCommon {
 public:
   // Get the path to the attachments folder.
   std::string GetAttachmentsDirectory() { return m_attachmentsDir; }
+
+  void OpenAttachmentsFile(const std::string &name, unsigned int parse,
+                           comms::OpenFileData &data) {
+    std::string fullpath(GetAttachmentsDirectory());
+    if (parse) {
+      // Get the username out of the string.
+      std::string::size_type pos = name.find_last_of('|');
+      if (pos != std::string::npos) {
+        fullpath.append(name.substr(0, pos));
+      }
+    } else {
+      fullpath.append(name);
+    }
+
+    data.file = fopen(fullpath.c_str(), "wb");
+    data.path = fullpath;
+  }
 
   // The NetCommon constructor initializes WinSock and fetches our IP address.
   NetCommon() {
@@ -297,10 +321,11 @@ public:
     upscaledData.push_back(htonl(packet.hdr.current));
     upscaledData.push_back(htonl(packet.hdr.len));
     upscaledData.push_back(htonl(packet.hdr.sequence));
+    upscaledData.push_back(htonl(packet.hdr.id));
 
     for (unsigned int i = 0; i < packet.hdr.len; ++i)
-      upscaledData.push_back(htonl(static_cast<unsigned int>(packet.data[i]) +
-                             SALT));
+      upscaledData.push_back(
+          htonl(static_cast<unsigned int>(packet.data[i]) + SALT));
 
     int bytes = send(s, reinterpret_cast<char *>(&upscaledData[0]),
                      upscaledData.size() * sizeof(unsigned int), 0);
@@ -320,7 +345,8 @@ public:
         if (clients[j].socket == i) {
           std::string alias = clients[j].alias;
           alias.append(" - has taken the blue pill.");
-          comms::Packet goodbye{{PKT_MSG, 0, 0, 0, alias.length(), 0}, alias};
+          comms::Packet goodbye{{PKT_MSG, 0, 0, 0, alias.length(), 0, 0},
+                                alias};
           out.push_back(goodbye);
           break;
         }
@@ -410,24 +436,25 @@ public:
           so.alias = msg.data;
           std::string data = msg.data;
           data.append(" - has taken the red pill.");
-          comms::Packet packet{{PKT_MSG, 0, 0, 0, data.length(), 1}, data};
+          comms::Packet packet{{PKT_MSG, 0, 0, 0, data.length(), 1, 0}, data};
           globalMessages.push_back(packet);
 
-          comms::Packet ack{{PKT_ALIAS_ACK, 0, 0, 0, 0, msg.hdr.sequence}, ""};
+          comms::Packet ack{{PKT_ALIAS_ACK, 0, 0, 0, 0, msg.hdr.sequence, 0},
+                            ""};
           so.outboundMessages.push_back(ack);
         } break;
         case PKT_QRY: {
-          comms::Packet ack{{PKT_QRY_ACK, 0, 0, 0, 0, msg.hdr.sequence}, ""};
+          comms::Packet ack{{PKT_QRY_ACK, 0, 0, 0, 0, msg.hdr.sequence, 0}, ""};
           so.outboundMessages.push_back(ack);
         } break;
         case PKT_MSG: {
-          comms::Packet ack{{PKT_MSG_ACK, 0, 0, 0, 0, msg.hdr.sequence}, ""};
+          comms::Packet ack{{PKT_MSG_ACK, 0, 0, 0, 0, msg.hdr.sequence, 0}, ""};
           so.outboundMessages.push_back(ack);
 
           globalMessages.push_back(msg);
         } break;
         case PKT_PVT: {
-          comms::Packet ack{{PKT_PVT_ACK, 0, 0, 0, 0, msg.hdr.sequence}, ""};
+          comms::Packet ack{{PKT_PVT_ACK, 0, 0, 0, 0, msg.hdr.sequence, 0}, ""};
           so.outboundMessages.push_back(ack);
 
           privateMessages.push_back(msg);
@@ -444,10 +471,16 @@ public:
               user_list.append("|");
             }
             comms::Packet ack{
-                {PKT_LST_ACK, 0, 0, 0, user_list.length(), msg.hdr.sequence},
+                {PKT_LST_ACK, 0, 0, 0, user_list.length(), msg.hdr.sequence, 0},
                 user_list};
             so.outboundMessages.push_back(ack);
           }
+        } break;
+        case PKT_FILE: {
+          comms::Packet ack{{PKT_FILE_ACK, 0, 0, 0, 0, msg.hdr.sequence, 0},
+                            ""};
+          so.outboundMessages.push_back(ack);
+          globalMessages.push_back(msg);
         } break;
         }
       }
@@ -547,6 +580,8 @@ class NetClient : public NetCommon {
   std::vector<comms::Packet> m_threadInQueue;
   std::vector<std::string> m_printQueue;
 
+  std::vector<comms::OpenFileData> openFiles;
+
   // Lock-Free
   void PvtAddPrintQueueHelper(const std::string &data, bool &trigger) {
     if (!data.empty())
@@ -566,7 +601,9 @@ class NetClient : public NetCommon {
     }
 
     std::vector<comms::Packet> lFilePieces;
-    comms::Packet initial{{PKT_FILE, 0, 0, 0, 0, GetNextSequence()}, ""};
+    comms::Packet initial{
+        {PKT_FILE, 0, 0, 0, 0, GetNextSequence(), reinterpret_cast<int>(&file)},
+        ""};
     std::string name_user{name};
     if (!user.empty()) {
       name_user.append("|");
@@ -596,8 +633,9 @@ class NetClient : public NetCommon {
     for (int i = 0; i < chunks; ++i) {
       int bytesRead = fread(buf, 1, 2048 - comms::HeaderSize, file);
 
-      comms::Packet next{
-          {PKT_FILE, 0, chunks, i + 1, bytesRead, GetNextSequence()}, ""};
+      comms::Packet next{{PKT_FILE, 0, chunks, i + 1, bytesRead,
+                          GetNextSequence(), reinterpret_cast<int>(&file)},
+                         ""};
       next.data.assign(buf, bytesRead);
       lFilePieces.push_back(next);
     }
@@ -606,6 +644,43 @@ class NetClient : public NetCommon {
     m_threadOutQueue.insert(m_threadOutQueue.end(), lFilePieces.begin(),
                             lFilePieces.end());
     fclose(file);
+  }
+
+  // Lock-Free
+  void HandleFile(comms::Packet &packet) {
+    if (packet.hdr.current == 0) {
+      comms::OpenFileData data;
+      data.id = packet.hdr.id;
+      OpenAttachmentsFile(packet.data, packet.hdr.flags, data);
+      openFiles.push_back(data);
+      return;
+    }
+
+    bool displayFile = false;
+    std::string displayName;
+    // Next we simply write the data out if we have an open file.
+    auto it = openFiles.begin();
+    auto eit = openFiles.end();
+    for (; it != eit; ++it) {
+      if (it->id == packet.hdr.id) {
+        // Then we can write some data to the file.
+        fwrite(packet.data.data(), 1, packet.data.length(), it->file);
+        std::cout << "Writing file data: " << packet.data.length() << std::endl;
+        if (packet.hdr.current == packet.hdr.parts) {
+          fclose(it->file);
+          displayFile = true;
+          displayName = it->path;
+          openFiles.erase(it);
+        }
+        break;
+      }
+    }
+    if (displayFile) {
+      // Push the file to some kind of list for the user to see.
+      std::string msg = "Got file: ";
+      msg.append(displayName);
+      m_printQueue.push_back(msg);
+    }
   }
 
 public:
@@ -627,8 +702,8 @@ public:
     std::string data(m_alias);
     data.append(" : ");
     data.append(text);
-    comms::Packet packet{{PKT_MSG, 0, 0, 0, data.length(), GetNextSequence()},
-                         data};
+    comms::Packet packet{
+        {PKT_MSG, 0, 0, 0, data.length(), GetNextSequence(), 0}, data};
     m_threadOutQueue.push_back(packet);
   }
 
@@ -661,7 +736,7 @@ public:
     }
 
     m_printQueue.push_back("Fetching list from server....");
-    comms::Packet packet{{PKT_LST, 0, 0, 0, 0, GetNextSequence()}, ""};
+    comms::Packet packet{{PKT_LST, 0, 0, 0, 0, GetNextSequence(), 0}, ""};
     m_threadOutQueue.push_back(packet);
   }
 
@@ -728,7 +803,7 @@ public:
         m_connected = true;
 
         // Create the connect message with our alias.
-        comms::Packet aliasMsg{{PKT_ALIAS, 0, 0, 0, m_alias.length(), 4},
+        comms::Packet aliasMsg{{PKT_ALIAS, 0, 0, 0, m_alias.length(), 4, 0},
                                m_alias};
         m_threadOutQueue.push_back(aliasMsg);
 
@@ -739,10 +814,22 @@ public:
     }
   }
 
-  void RemoveOutboundPacket(char msgtype) {
+  void RemoveOutboundPacket(char msgtype, unsigned int sequence = 4294967290) {
     // Remove the item from the out queue.
     auto out_it = m_threadOutQueue.begin();
     auto out_eit = m_threadOutQueue.end();
+
+    if (sequence != 4294967290) {
+      // unsigned int reformedSequence = htonl(sequence);
+      for (; out_it != out_eit; ++out_it) {
+        if (out_it->hdr.sequence == sequence) {
+          m_threadOutQueue.erase(out_it);
+          break;
+        }
+      }
+      return;
+    }
+
     for (; out_it != out_eit; ++out_it) {
       if (out_it->hdr.type == msgtype) {
         m_threadOutQueue.erase(out_it);
@@ -773,7 +860,7 @@ public:
         PvtAddPrintQueueHelper(in_it->data, erasePacket);
       } else if (in_it->hdr.type == PKT_MSG_ACK) {
         std::cout << "Got message Ack." << std::endl;
-        RemoveOutboundPacket(PKT_MSG);
+        RemoveOutboundPacket(PKT_MSG, in_it->hdr.sequence);
         PvtAddPrintQueueHelper(in_it->data, erasePacket);
       } else if (in_it->hdr.type == PKT_PVT_ACK) {
         std::cout << "Got private Ack." << std::endl;
@@ -787,6 +874,15 @@ public:
         std::cout << "Got list users Ack." << std::endl;
         RemoveOutboundPacket(PKT_LST);
         PvtAddPrintQueueHelper(in_it->data, erasePacket);
+      } else if (in_it->hdr.type == PKT_FILE_ACK) {
+        std::cout << "Got file Ack." << std::endl;
+        RemoveOutboundPacket(PKT_FILE, in_it->hdr.sequence);
+        erasePacket = true;
+      } else if (in_it->hdr.type == PKT_FILE) {
+        std::cout << "Got file packet." << std::endl;
+        RemoveOutboundPacket(PKT_FILE, in_it->hdr.sequence);
+        HandleFile(*in_it);
+        erasePacket = true;
       }
 
       // We might miss one packet like this, but it's cool.
@@ -847,25 +943,49 @@ DWORD WINAPI ServerCommsConnections(LPVOID param) {
 
   bool running = true;
   char stack[2048];
+  std::vector<char> packetData;
 
   while (running) {
     {
       net::AutoLocker lock(server->GetMutex());
       std::vector<net::SocketData> &clients{server->GetClients()};
       for (auto &i : clients) {
-        int bytesRead = recv(i.socket, stack, 2048, 0);
-        if (bytesRead >= comms::HeaderSize) {
+
+        // Read fully from the client.
+        int bytesRead{0};
+        do {
+          bytesRead = recv(i.socket, stack, 2048, 0);
+          if (bytesRead > 0) {
+            const char *start = stack;
+            const char *end = stack + bytesRead;
+            packetData.insert(packetData.end(), start, end);
+          }
+        } while (bytesRead > 0);
+
+        // Now we have an entire list of packets.
+        int packetDataSize = packetData.size();
+        while (packetDataSize >= comms::HeaderSize) {
           comms::Header hdr;
-          AssignHeader(hdr, stack);
-
-          std::cout << "Got listing packet - type[" << hdr.type << "] len["
-                    << hdr.len << "]" << std::endl;
-
-          if (bytesRead >=
+          AssignHeader(hdr, &packetData[0]);
+          std::cout << "Got packet - type[" << hdr.type << "] len[" << hdr.len
+                    << "]" << std::endl;
+          if (packetDataSize >=
               static_cast<int>(comms::HeaderSize + (hdr.len * sizeof(int)))) {
-            comms::Packet packet{hdr, ""};
-            AssignMessage(stack, hdr, packet.data);
-            i.inboundMessages.push_back(packet);
+            // We have a valid packet/s.
+            comms::Packet pkt{hdr, ""};
+            AssignMessage(reinterpret_cast<char *>(&packetData[0]), hdr,
+                          pkt.data);
+
+            // std::cout << "Got Packet: " << pkt.data.c_str() << std::endl;
+            i.inboundMessages.push_back(pkt);
+
+            // Now that we have read a packet from the stream, we remove the
+            // chunk
+            // we just read.
+            int dataProcessed = (comms::HeaderSize + hdr.len * sizeof(int));
+            packetData.erase(packetData.begin(),
+                             packetData.begin() + dataProcessed);
+            packetDataSize = packetData.size();
           }
         }
       }
@@ -890,6 +1010,7 @@ DWORD WINAPI ClientCommsConnection(LPVOID param) {
     std::vector<comms::Packet> &in_queue{client->GetThreadInQueue()};
     std::vector<comms::Packet> &out_queue{client->GetThreadOutQueue()};
 
+    // Read fully from the server.
     int bytesRead{0};
     do {
       bytesRead = recv(client->GetSocket(), stack, 2048, 0);
