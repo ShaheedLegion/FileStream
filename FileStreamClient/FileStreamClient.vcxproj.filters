@@ -23,9 +23,6 @@
     <ClInclude Include="impl.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="net_client.hpp">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="process_client.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
