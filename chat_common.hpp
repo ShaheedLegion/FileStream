@@ -8,6 +8,7 @@
 #include <string>
 #include <vector>
 
+#include "print_structs.hpp"
 /*
 Sequence of events.
 
@@ -171,6 +172,7 @@ struct OpenFileData {
   unsigned int id;
   FILE *file;
   std::string path;
+  std::string displayName;
 };
 
 struct PacketInfo {
@@ -307,9 +309,11 @@ public:
       std::string::size_type pos = name.find_last_of('|');
       if (pos != std::string::npos) {
         fullpath.append(name.substr(0, pos));
+        data.displayName = name.substr(0, pos);
       }
     } else {
       fullpath.append(name);
+      data.displayName = name;
     }
 
     data.file = fopen(fullpath.c_str(), "wb");
@@ -667,7 +671,7 @@ class NetClient : public NetCommon {
   CRITICAL_SECTION m_mutex;
   comms::packetQueue m_threadOutQueue;
   comms::packetQueue m_threadInQueue;
-  std::vector<std::string> m_printQueue;
+  print::printQueue m_printQueue;
 
   std::vector<comms::OpenFileData> openFiles;
   comms::packetQueue m_threadFileOutQueue;
@@ -675,7 +679,7 @@ class NetClient : public NetCommon {
   // Lock-Free
   void PvtAddPrintQueueHelper(const std::string &data, bool &trigger) {
     if (!data.empty())
-      m_printQueue.push_back(data);
+      m_printQueue.push_back(print::PrintInfo(data, "", false));
     trigger = true;
   }
 
@@ -686,7 +690,8 @@ class NetClient : public NetCommon {
     // We simply block until we can allocate the entire file into our buffer.
     if (!file) {
       AutoLocker locker(m_mutex);
-      m_printQueue.push_back("Could not open the file");
+      m_printQueue.push_back(
+          print::PrintInfo("Could not open the file", "", false));
       return;
     }
 
@@ -757,6 +762,7 @@ class NetClient : public NetCommon {
 
     bool displayFile = false;
     std::string displayName;
+    std::string path;
     // Next we simply write the data out if we have an open file.
     auto it = openFiles.begin();
     auto eit = openFiles.end();
@@ -768,7 +774,8 @@ class NetClient : public NetCommon {
         if (packet.hdr.current == packet.hdr.parts) {
           fclose(it->file);
           displayFile = true;
-          displayName = it->path;
+          displayName = it->displayName;
+          path = it->path;
           openFiles.erase(it);
         }
         break;
@@ -778,7 +785,9 @@ class NetClient : public NetCommon {
       // Push the file to some kind of list for the user to see.
       std::string msg = "Got file: ";
       msg.append(displayName);
-      m_printQueue.push_back(msg);
+
+      print::PrintInfo info(msg, path, true);
+      m_printQueue.push_back(info);
     }
   }
 
@@ -829,7 +838,7 @@ public:
     m_threadOutQueue.push_back(info);
   }
 
-  void GetMessages(std::vector<std::string> &msg) {
+  void GetMessages(print::printQueue &msg) {
     AutoLocker locker(m_mutex);
     msg.insert(msg.end(), m_printQueue.begin(), m_printQueue.end());
     m_printQueue.clear();
@@ -839,25 +848,29 @@ public:
     AutoLocker locker(m_mutex);
 
     if (m_connected) {
-      m_printQueue.push_back("You cannot change your alias after connecting.");
-      m_printQueue.push_back("You'll have to reconnect with a new alias.");
+      m_printQueue.push_back(print::PrintInfo(
+          "You cannot change your alias after connecting.", "", false));
+      m_printQueue.push_back(print::PrintInfo(
+          "You'll have to reconnect with a new alias.", "", false));
       return;
     }
 
     m_alias = alias;
     std::string message("Alias set to - ");
     message.append(alias);
-    m_printQueue.push_back(message);
+    m_printQueue.push_back(print::PrintInfo(message, "", false));
   }
 
   void GetUserList() {
     AutoLocker locker(m_mutex);
     if (!m_connected) {
-      m_printQueue.push_back("You need to connect first.");
+      m_printQueue.push_back(
+          print::PrintInfo("You need to connect first.", "", false));
       return;
     }
 
-    m_printQueue.push_back("Fetching list from server....");
+    m_printQueue.push_back(
+        print::PrintInfo("Fetching list from server....", "", false));
     comms::PacketInfo info{
         {{PKT_LST, 0, 0, 0, 0, GetNextSequence(), 0}, ""}, false, 0};
     m_threadOutQueue.push_back(info);
@@ -916,7 +929,8 @@ public:
       // if connection failed
       if (m_socket == INVALID_SOCKET) {
         std::cout << "Unable to connect to server!" << std::endl;
-        m_printQueue.push_back("Unable to connect to the server.");
+        m_printQueue.push_back(
+            print::PrintInfo("Unable to connect to the server.", "", false));
       } else {
 
         // If iMode!=0, non-blocking mode is enabled.
@@ -1001,9 +1015,6 @@ public:
         erasePacket = true;
       } else if (in_it->packet.hdr.type == PKT_FILE_IN) {
         std::cout << "Got file_in packet." << std::endl;
-        // comms::Packet ack{
-        //    {PKT_FILE_IN_ACK, 0, 0, 0, 0, in_it->packet.hdr.sequence, 0}, ""};
-        // SendPacket(m_socket, ack);
         HandleFile(in_it->packet);
         erasePacket = true;
       }

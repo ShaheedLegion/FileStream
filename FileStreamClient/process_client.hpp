@@ -15,6 +15,7 @@ public:
   virtual ~Output() {}
   virtual void sendOutput(const std::string &data) = 0;
   virtual void sendOutput(const std::vector<std::string> &text) = 0;
+  virtual void sendOutput(const print::printQueue &text) = 0;
   virtual void minimizeOutput() = 0;
   virtual void flashOutput() = 0;
   virtual void clearOutput() = 0;
@@ -136,9 +137,7 @@ public:
     m_client.Connect(ip);
   }
 
-  void listUsers() {
-    m_client.GetUserList();
-  }
+  void listUsers() { m_client.GetUserList(); }
 
   void sendPrivate(const std::string &command) {
     // Parse out the user name .... we will need to send this to the server for
@@ -180,7 +179,7 @@ public:
 
   void update() {
     // Check if we can get any data from the net client.
-    std::vector<std::string> text;
+    print::printQueue text;
     m_client.GetMessages(text);
     if (!text.empty())
       m_out.flashOutput();

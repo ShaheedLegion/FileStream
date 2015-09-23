@@ -102,11 +102,18 @@ public:
     addText(text);
   }
 
+  virtual void sendOutput(const print::printQueue &text) override {
+    if (text.empty())
+      return;
+
+    addText(text);
+  }
+
   virtual void minimizeOutput() override { m_screen.Minimize(true); }
   virtual void flashOutput() override { m_screen.FlashWindow(true); }
 
   void clearOutput() override { clearText(); }
-   
+
 protected:
   command_processor m_processor;
   ui::Button m_minBtn;

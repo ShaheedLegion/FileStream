@@ -6,6 +6,10 @@
 
 #include "Renderer.hpp"
 #include "util.hpp"
+#include "../print_structs.hpp"
+
+#include <shellapi.h>
+#include <objbase.h>
 
 namespace ui {
 
@@ -132,16 +136,31 @@ struct cursor {
 };
 
 class InputPanel : public Panel {
+
+  void openFile(const print::PrintInfo &item) {
+    ShellExecute(0, 0, item.bgInfo.c_str(), 0, 0, SW_SHOW);
+  }
+
 public:
   InputPanel(detail::RendererSurface &screen, const std::string &bg)
-      : Panel(screen), m_bg(bg), m_cursor('_', 500) {}
+      : Panel(screen), m_bg(bg), m_cursor('_', 500) {
+    CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+  }
   virtual ~InputPanel() {}
 
-  void addText(const std::string &text) { m_text.push_back(text); }
+  void addText(const std::string &text) {
+    m_text.push_back(print::PrintInfo(text, "", false));
+  }
   void addText(const std::vector<std::string> &text) {
+    for (int i = 0; i < text.size(); ++i) {
+      m_text.push_back(print::PrintInfo(text[i], "", false));
+    }
+  }
+  void addText(const print::printQueue &text) {
     m_text.insert(m_text.end(), text.begin(), text.end());
   }
-  void getText(std::vector<std::string> &text) { text = m_text; }
+
+  void getText(print::printQueue &text) { text = m_text; }
   void clearText() { m_text.clear(); }
   const std::string &getScratch() const { return m_scratch; }
 
@@ -150,6 +169,12 @@ public:
   void update() override {
     m_bg.draw(m_screen);
 
+    // One of the things we do is to check if the user is hovering or clicking
+    // on some clickable text.
+    int mx, my;
+    bool l, m, r;
+    m_screen.QueryMouse(mx, my, l, m, r);
+
     int numStrings{static_cast<int>(m_text.size())};
     int screenSize = m_screen.GetHeight() - 40;
     int yPos = 20;
@@ -157,7 +182,8 @@ public:
       yPos = screenSize - (numStrings * 16);
 
     for (auto &i : m_text) {
-      m_screen.RenderText(i, 20, yPos);
+      if (m_screen.RenderText(i, 20, yPos, mx, my, l, m, r))
+        openFile(i);
       yPos += 16;
     }
 
@@ -172,7 +198,8 @@ public:
     } else {
       std::string temp(m_scratch);
       temp.push_back(m_cursor.getCursor());
-      m_screen.RenderText(temp, 20, yPos);
+      m_screen.RenderText(print::PrintInfo(temp, "", false), 20, yPos, mx, my,
+                          l, m, r);
     }
   }
 
@@ -180,7 +207,7 @@ public:
 
 protected:
   Background m_bg;
-  std::vector<std::string> m_text;
+  print::printQueue m_text;
   // The scratchpad text used to composition the final output.
   std::string m_scratch;
   cursor m_cursor;
@@ -247,7 +274,8 @@ public:
 
     int yPos = y + 20;
     for (auto &i : m_text) {
-      surface.RenderText(i, x + 20, yPos);
+      surface.RenderText(print::PrintInfo(i, "", false), x + 20, yPos, -1, -1,
+                         false, false, false);
       yPos += 20;
     }
   }

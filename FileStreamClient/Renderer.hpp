@@ -12,6 +12,7 @@
 #include <vector>
 #include <iostream>
 #include "thread.hpp"
+#include "../print_structs.hpp"
 
 #define _WIDTH 800
 #define _HEIGHT 600
@@ -70,8 +71,14 @@ public:
       m_bitmapRenderer->HandleDirection(direction);
   }
 
-  void RenderText(const std::string &text, int x, int y) {
-    m_textInfo.push_back(textInfo(text, x, y));
+  bool RenderText(const print::PrintInfo &text, int x, int y, int mx, int my,
+                  bool l, bool m, bool r) {
+    bool hover = (my >= y && my <= y + 16);
+    bool clicked = l && hover;
+
+    m_textInfo.push_back(textInfo(text.text, x, y, hover && text.clickable));
+
+    return clicked;
   }
 
   void Flip(bool clear = false) {
@@ -88,7 +95,15 @@ public:
 
     if (!m_textInfo.empty()) {
       for (auto &i : m_textInfo) {
-        TextOut(m_dc, i.x, i.y, i.t.c_str(), i.t.length());
+        if (i.hover) {
+          int oldmode = GetBkMode(m_dc);
+          SetBkMode(m_dc, OPAQUE);
+          SetBkColor(m_dc, RGB(64, 64, 255));
+          TextOut(m_dc, i.x, i.y, i.t.c_str(), i.t.length());
+          SetBkMode(m_dc, oldmode);
+        } else {
+          TextOut(m_dc, i.x, i.y, i.t.c_str(), i.t.length());
+        }
       }
       m_textInfo.clear();
     }
@@ -180,8 +195,10 @@ protected:
     std::string t;
     int x;
     int y;
+    bool hover;
 
-    textInfo(const std::string &y, int u, int v) : t(y), x(u), y(v) {}
+    textInfo(const std::string &y, int u, int v, bool h)
+        : t(y), x(u), y(v), hover(h) {}
   };
   struct mouseInfo {
   private:
