@@ -299,7 +299,9 @@ class NetCommon {
 
 public:
   // Get the path to the attachments folder.
-  std::string GetAttachmentsDirectory() { return m_attachmentsDir; }
+  const std::string &GetAttachmentsDirectory() const {
+    return m_attachmentsDir;
+  }
 
   void OpenAttachmentsFile(const std::string &name, unsigned int parse,
                            comms::OpenFileData &data) {
@@ -927,7 +929,7 @@ public:
       ::freeaddrinfo(result);
 
       // if connection failed
-      if (m_socket == INVALID_SOCKET) {
+      if (m_socket == INVALID_SOCKET || iResult == SOCKET_ERROR) {
         std::cout << "Unable to connect to server!" << std::endl;
         m_printQueue.push_back(
             print::PrintInfo("Unable to connect to the server.", "", false));

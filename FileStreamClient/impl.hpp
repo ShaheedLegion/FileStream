@@ -28,6 +28,8 @@ struct command_processor {
     m_client.update();
   }
 
+  const std::string &getAttachDir() { return m_client.getAttachDir(); }
+
 protected:
   game::ProcessClient m_client;
 
@@ -50,7 +52,7 @@ public:
   RenditionPanel(detail::RendererSurface &surface)
       : InputPanel(surface, "bg.graw"), m_processor(*this),
         m_minBtn("btn_min.graw"), m_dragBtn("btn_drag.graw"),
-        m_clsBtn("btn_exit.graw") {
+        m_attachBtn("btn_attach.graw"), m_clsBtn("btn_exit.graw") {
 
     addText("Welcome to NetChatmium: by Shaheed Abdol. 2015");
     addText("This is a general c++ chat application.");
@@ -82,7 +84,8 @@ public:
     // Render elements on top of interface.
     m_minBtn.draw(m_screen, 760, 10);
     m_dragBtn.draw(m_screen, 760, 60);
-    m_clsBtn.draw(m_screen, 760, 110);
+    m_attachBtn.draw(m_screen, 760, 110);
+    m_clsBtn.draw(m_screen, 760, 160);
 
     // Now commit those changes to the ui.
     ui::InputPanel::commit();
@@ -118,6 +121,7 @@ protected:
   command_processor m_processor;
   ui::Button m_minBtn;
   ui::Button m_dragBtn;
+  ui::Button m_attachBtn;
   ui::Button m_clsBtn;
 
   void processButtonInput() {
@@ -132,6 +136,9 @@ protected:
     if (m_minBtn.handleMouseInput(mx, my, l, m, r)) {
       m_screen.ClearMouse();
       m_processor.process_command(this, "-min");
+    } else if (m_attachBtn.handleMouseInput(mx, my, l, m, r)) {
+      m_screen.ClearMouse();
+      InputPanel::openDir(m_processor.getAttachDir());
     } else if (m_clsBtn.handleMouseInput(mx, my, l, m, r)) {
       m_screen.ClearMouse();
       m_exiting = m_processor.process_command(this, "-quit");

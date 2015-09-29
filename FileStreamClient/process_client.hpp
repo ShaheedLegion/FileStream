@@ -172,6 +172,10 @@ public:
     m_out.sendOutput("File sending cancelled.");
   }
 
+  const std::string &getAttachDir() {
+    return m_client.GetAttachmentsDirectory();
+  }
+
   void helpUser(game::Output &out) const {}
 
   Output &getOutput() const { return m_out; }
