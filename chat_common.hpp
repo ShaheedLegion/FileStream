@@ -9,6 +9,10 @@
 #include <vector>
 
 #include "print_structs.hpp"
+
+#include "zlib.h"
+#pragma comment(lib, "../zlibstatic.lib")
+
 /*
 Sequence of events.
 
@@ -160,7 +164,7 @@ struct Header {
 const int HeaderSize = sizeof(Header);
 
 // Larger values make file transfers more stable.
-const int TransferSize = 4096;
+const int TransferSize = 18366;
 
 #pragma pack(1)
 struct Packet {
@@ -256,6 +260,62 @@ void QueueCompletePackets(std::vector<char> &data, packetQueue &out) {
 }
 
 }; // namespace comms
+
+namespace flate {
+struct FlateResult {
+  int inDataSize;
+  int outDataSize;
+  Bytef *inData;
+  Bytef *outData;
+
+  FlateResult(Bytef *in, int inSize, int outSize)
+      : inData(in), inDataSize(inSize), outDataSize(outSize) {
+    outData = new Bytef[outDataSize];
+  }
+
+  FlateResult(const char *in, int inSize, int outSize)
+      : inData(reinterpret_cast<Bytef *>(const_cast<char *>(in))),
+        inDataSize(inSize), outDataSize(outSize) {
+    outData = new Bytef[outDataSize];
+  }
+
+  ~FlateResult() { delete[] outData; }
+};
+
+void InflateData(FlateResult &result) {
+  z_stream zInfo = {Z_NULL};
+  zInfo.total_in = zInfo.avail_in = result.inDataSize;
+  zInfo.total_out = zInfo.avail_out = result.outDataSize;
+  zInfo.next_in = result.inData;
+  zInfo.next_out = result.outData;
+
+  int nErr = inflateInit2(&zInfo, MAX_WBITS | 32);
+  if (nErr == Z_OK) {
+    nErr = inflate(&zInfo, Z_FINISH);
+    if (nErr == Z_STREAM_END)
+      result.outDataSize = zInfo.total_out;
+  }
+  inflateEnd(&zInfo);
+}
+
+void DeflateData(FlateResult &result) {
+  z_stream zInfo = {Z_NULL};
+  zInfo.total_in = zInfo.avail_in = result.inDataSize;
+  zInfo.total_out = zInfo.avail_out = result.outDataSize;
+  zInfo.next_in = result.inData;
+  zInfo.next_out = result.outData;
+
+  int nErr = deflateInit2(&zInfo, Z_BEST_SPEED, Z_DEFLATED, MAX_WBITS | 16, 8,
+                          Z_DEFAULT_STRATEGY);
+  if (nErr == Z_OK) {
+    nErr = deflate(&zInfo, Z_FINISH);
+    if (nErr == Z_STREAM_END)
+      result.outDataSize = zInfo.total_out;
+  }
+  deflateEnd(&zInfo);
+}
+
+}; // namespace flate
 
 namespace net {
 
@@ -512,8 +572,18 @@ public:
           so.alias = msg.packet.data;
           std::string data = msg.packet.data;
           data.append(" - has taken the red pill.");
+
+          // Compress the response.
+          flate::FlateResult compressed(data.c_str(), data.length(),
+                                        data.length() * 2);
+          flate::DeflateData(compressed);
+
+          std::string cData;
+          cData.assign(reinterpret_cast<char *>(compressed.outData),
+                       compressed.outDataSize);
+
           comms::PacketInfo info{
-              {{PKT_MSG, 0, 0, 0, data.length(), 1, 0}, data}, false, 0};
+              {{PKT_MSG, 0, 0, 0, cData.length(), 1, 0}, cData}, false, 0};
           // Store the messages for global delivery.
           globalMessages.push_back(info);
 
@@ -679,9 +749,23 @@ class NetClient : public NetCommon {
   comms::packetQueue m_threadFileOutQueue;
 
   // Lock-Free
-  void PvtAddPrintQueueHelper(const std::string &data, bool &trigger) {
-    if (!data.empty())
-      m_printQueue.push_back(print::PrintInfo(data, "", false));
+  void PvtAddPrintQueueHelper(const std::string &data, bool &trigger,
+                              bool compressed) {
+    if (!data.empty()) {
+      if (!compressed) {
+        m_printQueue.push_back(print::PrintInfo(data, "", false));
+      } else {
+        // Decompress the data.
+        std::string pData{data};
+        flate::FlateResult decompressed(pData.c_str(), pData.length(),
+                                        pData.length() * 2);
+        InflateData(decompressed);
+        std::string iData;
+        iData.assign(reinterpret_cast<char *>(decompressed.outData),
+                     decompressed.outDataSize);
+        m_printQueue.push_back(print::PrintInfo(iData, "", false));
+      }
+    }
     trigger = true;
   }
 
@@ -833,8 +917,18 @@ public:
     std::string data(m_alias);
     data.append(" : ");
     data.append(text);
+
+    // Compress the data.
+    flate::FlateResult compressed(data.c_str(), data.length(),
+                                  data.length() * 2);
+    flate::DeflateData(compressed);
+
+    std::string cData;
+    cData.assign(reinterpret_cast<char *>(compressed.outData),
+                 compressed.outDataSize);
+
     comms::PacketInfo info{
-        {{PKT_MSG, 0, 0, 0, data.length(), GetNextSequence(), 0}, data},
+        {{PKT_MSG, 0, 0, 0, cData.length(), GetNextSequence(), 0}, cData},
         false,
         0};
     m_threadOutQueue.push_back(info);
@@ -988,28 +1082,28 @@ public:
       if (in_it->packet.hdr.type == PKT_ALIAS_ACK) {
         std::cout << "Got alias Ack." << std::endl;
         RemoveOutboundPacket(m_threadOutQueue, PKT_ALIAS);
-        PvtAddPrintQueueHelper(in_it->packet.data, erasePacket);
+        PvtAddPrintQueueHelper(in_it->packet.data, erasePacket, false);
       } else if (in_it->packet.hdr.type == PKT_QRY_ACK) {
         std::cout << "Got query Ack." << std::endl;
         RemoveOutboundPacket(m_threadOutQueue, PKT_QRY);
-        PvtAddPrintQueueHelper(in_it->packet.data, erasePacket);
+        PvtAddPrintQueueHelper(in_it->packet.data, erasePacket, false);
       } else if (in_it->packet.hdr.type == PKT_MSG_ACK) {
         std::cout << "Got message Ack." << std::endl;
         RemoveOutboundPacket(m_threadOutQueue, PKT_MSG,
                              in_it->packet.hdr.sequence);
-        PvtAddPrintQueueHelper(in_it->packet.data, erasePacket);
+        PvtAddPrintQueueHelper(in_it->packet.data, erasePacket, false);
       } else if (in_it->packet.hdr.type == PKT_PVT_ACK) {
         std::cout << "Got private Ack." << std::endl;
         RemoveOutboundPacket(m_threadOutQueue, PKT_PVT);
-        PvtAddPrintQueueHelper(in_it->packet.data, erasePacket);
+        PvtAddPrintQueueHelper(in_it->packet.data, erasePacket, false);
       } else if (in_it->packet.hdr.type == PKT_MSG) {
         std::cout << "Got general message." << std::endl;
         RemoveOutboundPacket(m_threadOutQueue, PKT_QRY);
-        PvtAddPrintQueueHelper(in_it->packet.data, erasePacket);
+        PvtAddPrintQueueHelper(in_it->packet.data, erasePacket, true);
       } else if (in_it->packet.hdr.type == PKT_LST_ACK) {
         std::cout << "Got list users Ack." << std::endl;
         RemoveOutboundPacket(m_threadOutQueue, PKT_LST);
-        PvtAddPrintQueueHelper(in_it->packet.data, erasePacket);
+        PvtAddPrintQueueHelper(in_it->packet.data, erasePacket, false);
       } else if (in_it->packet.hdr.type == PKT_FILE_OUT_ACK) {
         std::cout << "Got file_out Ack." << std::endl;
         RemoveOutboundPacket(m_threadFileOutQueue, PKT_FILE_OUT,
