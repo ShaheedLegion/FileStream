@@ -30,6 +30,14 @@ public:
   virtual void HandleDirection(int direction) = 0;
 };
 
+class ScreenObserver {
+public:
+  virtual ~ScreenObserver() {}
+
+  virtual void HandleMouse(int x, int y, bool l, bool m, bool r) = 0;
+  virtual bool HandleDrag(int x, int y, bool l) = 0;
+};
+
 typedef unsigned int Uint32;
 
 class RendererSurface {
@@ -155,25 +163,22 @@ public:
     int scaledX, scaledY;
     getScaledWindowCoords(x, y, scaledX, scaledY);
 
-    m_mouse.set(scaledX, scaledY, l, m, r);
+    for (auto i : m_observers)
+      i->HandleMouse(scaledX, scaledY, l, m, r);
   }
 
-  bool HandleDrag(int x, int y) {
+  bool HandleDrag(int x, int y, bool l) {
     int scaledX, scaledY;
     getScaledWindowCoords(x, y, scaledX, scaledY);
 
-    return m_mouse.testDragArea(scaledX, scaledY);
+    bool dragged = false;
+    for (auto i : m_observers)
+      dragged |= i->HandleDrag(scaledX, scaledY, l);
+
+    return dragged;
   }
 
-  void QueryMouse(int &x, int &y, bool &l, bool &m, bool &r) {
-    m_mouse.get(x, y, l, m, r);
-  }
-
-  void ClearMouse() { m_mouse.set(0, 0, false, false, false); }
-
-  void InitializeDragArea(int x, int y, int w, int h) {
-    m_mouse.setDragArea(x, y, w, h);
-  }
+  void RegisterObserver(ScreenObserver *obs) { m_observers.push_back(obs); }
 
 protected:
   unsigned char *m_pixels;
@@ -200,68 +205,6 @@ protected:
     textInfo(const std::string &y, int u, int v, bool h)
         : t(y), x(u), y(v), hover(h) {}
   };
-  struct mouseInfo {
-  private:
-    CRITICAL_SECTION sec;
-    int m_x;
-    int m_y;
-    bool m_l;
-    bool m_m;
-    bool m_r;
-
-    // Dragging info
-    int m_dragX;
-    int m_dragY;
-    int m_dragW;
-    int m_dragH;
-
-  public:
-    mouseInfo() : m_x(0), m_y(0), m_l(false), m_m(false), m_r(false) {
-      InitializeCriticalSection(&sec);
-      m_dragX = 0;
-      m_dragY = 0;
-      m_dragW = 0;
-      m_dragH = 0;
-    }
-
-    ~mouseInfo() { DeleteCriticalSection(&sec); }
-
-    void set(int x, int y, bool l, bool m, bool r) {
-      EnterCriticalSection(&sec);
-      m_x = x;
-      m_y = y;
-      m_l = l;
-      m_m = m;
-      m_r = r;
-      LeaveCriticalSection(&sec);
-    }
-
-    void get(int &x, int &y, bool &l, bool &m, bool &r) {
-      EnterCriticalSection(&sec);
-      x = m_x;
-      y = m_y;
-      l = m_l;
-      m = m_m;
-      r = m_r;
-      LeaveCriticalSection(&sec);
-    }
-
-    void setDragArea(int x, int y, int w, int h) {
-      m_dragX = x;
-      m_dragY = y;
-      m_dragW = w;
-      m_dragH = h;
-    }
-
-    bool testDragArea(int mx, int my) {
-      if (mx >= m_dragX && m_x <= m_dragX + m_dragW) {
-        if (my >= m_dragY && m_y <= m_dragY + m_dragH)
-          return true;
-      }
-
-      return false;
-    }
-  };
 
   void getScaledWindowCoords(int x, int y, int &sx, int &sy) {
     float scaleX = static_cast<float>(_WIDTH) / static_cast<float>(_WW);
@@ -271,7 +214,7 @@ protected:
     sy = static_cast<int>(static_cast<float>(y) * scaleY);
   }
 
-  mouseInfo m_mouse;
+  std::vector<ScreenObserver *> m_observers;
   std::vector<textInfo> m_textInfo;
   std::vector<std::pair<WPARAM, bool>> m_keyInfo;
   std::vector<std::pair<WPARAM, LPARAM>> m_charInfo;
@@ -345,11 +288,11 @@ void HandleMouse(WPARAM wp, LPARAM lp, bool l, bool r, bool m) {
   g_renderer->screen.HandleMouse(x, y, l, m, r);
 }
 
-bool HandleDrag(WPARAM wp, LPARAM lp, int x, int y) {
+bool HandleDrag(WPARAM wp, LPARAM lp, int x, int y, bool l) {
   if (!g_renderer)
     return false;
 
-  return g_renderer->screen.HandleDrag(x, y);
+  return g_renderer->screen.HandleDrag(x, y, l);
 }
 
 long __stdcall WindowProcedure(HWND window, unsigned int msg, WPARAM wp,
@@ -388,7 +331,7 @@ long __stdcall WindowProcedure(HWND window, unsigned int msg, WPARAM wp,
       POINT point;
       GetCursorPos(&point);
       if (ScreenToClient(window, &point) &&
-          HandleDrag(wp, lp, point.x, point.y))
+          HandleDrag(wp, lp, point.x, point.y, (GetKeyState(VK_LBUTTON) < 0)))
         hit = HTCAPTION;
       return hit;
     }

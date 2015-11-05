@@ -51,7 +51,7 @@ class RenditionPanel : public ui::InputPanel, public game::Output {
 public:
   RenditionPanel(detail::RendererSurface &surface)
       : InputPanel(surface, "bg.graw"), m_processor(*this),
-        m_minBtn("btn_min.graw"), m_dragBtn("btn_drag.graw"),
+        m_minBtn("btn_min.graw"), m_dragBtn("btn_drag.graw", true),
         m_attachBtn("btn_attach.graw"), m_clsBtn("btn_exit.graw") {
 
     addText("Welcome to NetChatmium: by Shaheed Abdol. 2015");
@@ -59,7 +59,13 @@ public:
     addText("Press [Esc] to quit.");
     addText("Type -help [Enter] to get a hint.");
     addText("-------------------------------------------");
+
+    surface.RegisterObserver(&m_minBtn);
+    surface.RegisterObserver(&m_dragBtn);
+    surface.RegisterObserver(&m_attachBtn);
+    surface.RegisterObserver(&m_clsBtn);
   }
+
   ~RenditionPanel() {}
 
   virtual void process() override {
@@ -125,22 +131,12 @@ protected:
   ui::Button m_clsBtn;
 
   void processButtonInput() {
-    // First make sure the screen drag area is initialized.
-    m_screen.InitializeDragArea(m_dragBtn.getX(), m_dragBtn.getY(),
-                                m_dragBtn.getW(), m_dragBtn.getH());
-
     // Process things the buttons should do.
-    int mx, my;
-    bool l, m, r;
-    m_screen.QueryMouse(mx, my, l, m, r);
-    if (m_minBtn.handleMouseInput(mx, my, l, m, r)) {
-      m_screen.ClearMouse();
+    if (m_minBtn.wasClicked()) {
       m_processor.process_command(this, "-min");
-    } else if (m_attachBtn.handleMouseInput(mx, my, l, m, r)) {
-      m_screen.ClearMouse();
+    } else if (m_attachBtn.wasClicked()) {
       InputPanel::openDir(m_processor.getAttachDir());
-    } else if (m_clsBtn.handleMouseInput(mx, my, l, m, r)) {
-      m_screen.ClearMouse();
+    } else if (m_clsBtn.wasClicked()) {
       m_exiting = m_processor.process_command(this, "-quit");
     }
   }

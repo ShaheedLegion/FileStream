@@ -16,16 +16,22 @@ namespace ui {
 struct texture {
   detail::Uint32 *tex;
   int bounds[2];
+  int frames;
+  int frameHeight;
 
   texture(int w, int h) : tex(nullptr) {
     bounds[0] = w;
     bounds[1] = h;
+    frames = 1;
+    frameHeight = bounds[1];
     tex = new detail::Uint32[bounds[0] * bounds[1]];
   }
 
   texture(const texture &other) {
     bounds[0] = other.bounds[0];
     bounds[1] = other.bounds[1];
+    frames = other.frames;
+    frameHeight = other.frameHeight;
     tex = new detail::Uint32[bounds[0] * bounds[1]];
     memcpy(tex, other.tex, (bounds[0] * bounds[1]) * sizeof(detail::Uint32));
   }
@@ -82,6 +88,22 @@ struct texture {
     memset(tex, 0, len * sizeof(detail::Uint32));
   }
 
+  void copyFrame(detail::Uint32 *out, int w, int x, int y, int c, int max) {
+    frames = max;
+    frameHeight = bounds[1] / max;
+    if (c > max || w < bounds[0])
+      return;
+
+    int frameHeight = bounds[1] / max;
+    int rowOffset = frameHeight * (c * bounds[0]);
+
+    for (int ys = 0; ys < frameHeight; ++ys) {
+      detail::Uint32 *location{out + ((ys + y) * w) + x};
+      detail::Uint32 *source{tex + rowOffset + (ys * bounds[0])};
+      memcpy(location, source, bounds[0] * sizeof(detail::Uint32));
+    }
+  }
+
   ~texture() {
     delete[] tex;
     tex = nullptr;
@@ -135,7 +157,7 @@ struct cursor {
   }
 };
 
-class InputPanel : public Panel {
+class InputPanel : public Panel, public detail::ScreenObserver {
 
   void openFile(const print::PrintInfo &item) {
     ShellExecute(0, 0, item.bgInfo.c_str(), 0, 0, SW_SHOW);
@@ -145,6 +167,13 @@ public:
   InputPanel(detail::RendererSurface &screen, const std::string &bg)
       : Panel(screen), m_bg(bg), m_cursor('_', 500) {
     CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+    screen.RegisterObserver(this);
+
+    m_x = 0;
+    m_y = 0;
+    m_l = false;
+    m_m = false;
+    m_r = false;
   }
   virtual ~InputPanel() {}
 
@@ -170,15 +199,21 @@ public:
 
   virtual void process() {}
 
+  virtual void HandleMouse(int x, int y, bool l, bool m, bool r) override {
+    m_x = x;
+    m_y = y;
+    m_l = l;
+    m_m = m;
+    m_r = r;
+  }
+
+  virtual bool HandleDrag(int x, int y, bool) override { return false; }
+
   void update() override {
     m_bg.draw(m_screen);
 
     // One of the things we do is to check if the user is hovering or clicking
     // on some clickable text.
-    int mx, my;
-    bool l, m, r;
-    m_screen.QueryMouse(mx, my, l, m, r);
-
     int numStrings{static_cast<int>(m_text.size())};
     int screenSize = m_screen.GetHeight() - 40;
     int yPos = 20;
@@ -186,7 +221,7 @@ public:
       yPos = screenSize - (numStrings * 16);
 
     for (auto &i : m_text) {
-      if (m_screen.RenderText(i, 20, yPos, mx, my, l, m, r))
+      if (m_screen.RenderText(i, 20, yPos, m_x, m_y, m_l, m_m, m_r))
         openFile(i);
       yPos += 16;
     }
@@ -202,8 +237,8 @@ public:
     } else {
       std::string temp(m_scratch);
       temp.push_back(m_cursor.getCursor());
-      m_screen.RenderText(print::PrintInfo(temp, "", false), 20, yPos, mx, my,
-                          l, m, r);
+      m_screen.RenderText(print::PrintInfo(temp, "", false), 20, yPos, m_x, m_y,
+                          m_l, m_m, m_r);
     }
   }
 
@@ -215,11 +250,32 @@ protected:
   // The scratchpad text used to composition the final output.
   std::string m_scratch;
   cursor m_cursor;
+
+  // Mouse input storage
+  int m_x;
+  int m_y;
+  bool m_l;
+  bool m_m;
+  bool m_r;
 };
 
-class Button {
+/*
+The UI representation is a bit chaotic at the moment, but that will change very
+soon - I plan to refactor the entire codebase and move things into header and
+cpp files as needed.
+
+The buttons will only take 1 image as their input, but the button will contain
+states which determine which part of the image to show - each input image will
+contain 3 frames.
+*/
+class Button : public detail::ScreenObserver {
+  enum State { NORMAL = 0, HOVER, CLICK };
+  State m_state;
+
 public:
-  Button(const std::string &name) : m_textLimit(-1), m_texture(name) {}
+  Button(const std::string &name, bool handlesDrag = false)
+      : m_textLimit(-1), m_texture(name), m_state(NORMAL),
+        m_handlesDrag(handlesDrag) {}
   virtual ~Button() {}
 
   void setTextLimit(int chars) { m_textLimit = chars; }
@@ -246,14 +302,32 @@ public:
   }
 
   // Returns true if this button has been clicked.
-  bool handleMouseInput(int x, int y, bool l, bool m, bool r) {
-    // Buttons (for now) only deal with left mouse button input.
-    if (!l)
-      return false;
+  bool wasClicked() { return (m_state == CLICK); }
 
+  virtual void HandleMouse(int x, int y, bool l, bool m, bool r) override {
     // If left button is pressed, check if it's within bounds.
     if (x >= m_x && x <= m_x + m_texture.bounds[0]) {
-      if (y >= m_y && y <= m_y + m_texture.bounds[1]) {
+      if (y >= m_y && y <= m_y + m_texture.frameHeight) {
+        if (!l) {
+          m_state = HOVER;
+          return;
+        }
+
+        m_state = CLICK;
+        return;
+      }
+    }
+
+    m_state = NORMAL;
+  }
+
+  virtual bool HandleDrag(int x, int y, bool l) override {
+    if (!m_handlesDrag)
+      return false;
+
+    if (x >= m_x && x <= m_x + m_texture.bounds[0]) {
+      if (y >= m_y && y <= m_y + m_texture.frameHeight) {
+        m_state = (l ? CLICK : HOVER);
         return true;
       }
     }
@@ -267,11 +341,8 @@ public:
     // Button is always rendered at original size.
     detail::Uint32 *buffer = surface.GetPixels();
     int sw = surface.GetWidth();
-    for (int ys = 0; ys < m_texture.bounds[1]; ++ys) {
-      detail::Uint32 *location{buffer + ((ys + y) * sw) + x};
-      detail::Uint32 *source{m_texture.tex + (ys * m_texture.bounds[0])};
-      memcpy(location, source, m_texture.bounds[0] * sizeof(detail::Uint32));
-    }
+
+    m_texture.copyFrame(buffer, sw, m_x, m_y, static_cast<int>(m_state), 3);
 
     if (m_text.empty())
       return;
@@ -287,7 +358,7 @@ public:
   int getX() const { return m_x; }
   int getY() const { return m_y; }
   int getW() const { return m_texture.bounds[0]; }
-  int getH() const { return m_texture.bounds[1]; }
+  int getH() const { return m_texture.frameHeight; }
 
 protected:
   int m_x;
@@ -295,6 +366,7 @@ protected:
   int m_textLimit;
   texture m_texture;
   std::vector<std::string> m_text;
+  bool m_handlesDrag;
 };
 
 } // namespace ui
