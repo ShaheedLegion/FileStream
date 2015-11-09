@@ -83,12 +83,15 @@
     <ClCompile Include="FileStreamClient.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="impl.hpp" />
+    <ClInclude Include="impl\impl.hpp" />
+    <ClInclude Include="impl\main_panel.hpp" />
+    <ClInclude Include="impl\process_client.hpp" />
+    <ClInclude Include="impl\rendition_panel.hpp" />
     <ClInclude Include="process_client.hpp" />
     <ClInclude Include="Renderer.hpp" />
     <ClInclude Include="thread.hpp" />
-    <ClInclude Include="ui.hpp" />
-    <ClInclude Include="util.hpp" />
+    <ClInclude Include="ui\ui.hpp" />
+    <ClInclude Include="util\util.hpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

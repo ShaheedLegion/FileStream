@@ -51,7 +51,7 @@ public:
     memset(m_backBuffer, 0, (m_w * m_h * (m_bpp / 8)));
   }
 
-  ~RendererSurface() {}
+  ~RendererSurface() { m_observers.clear(); }
 
   void Cleanup() {
     delete[] m_pixels;

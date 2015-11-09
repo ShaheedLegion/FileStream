@@ -4,9 +4,9 @@
 #ifndef UI
 #define UI
 
-#include "Renderer.hpp"
-#include "util.hpp"
-#include "../print_structs.hpp"
+#include "../Renderer.hpp"
+#include "../util/util.hpp"
+#include "../../print_structs.hpp"
 
 #include <shellapi.h>
 #include <objbase.h>
@@ -18,6 +18,9 @@ struct texture {
   int bounds[2];
   int frames;
   int frameHeight;
+  bool validData;
+
+  bool hasData() const { return validData; }
 
   texture(int w, int h) : tex(nullptr) {
     bounds[0] = w;
@@ -25,21 +28,26 @@ struct texture {
     frames = 1;
     frameHeight = bounds[1];
     tex = new detail::Uint32[bounds[0] * bounds[1]];
+    validData = true;
   }
 
-  texture(const texture &other) {
+  texture(const texture &other) : tex(nullptr) {
     bounds[0] = other.bounds[0];
     bounds[1] = other.bounds[1];
     frames = other.frames;
     frameHeight = other.frameHeight;
     tex = new detail::Uint32[bounds[0] * bounds[1]];
     memcpy(tex, other.tex, (bounds[0] * bounds[1]) * sizeof(detail::Uint32));
+    validData = true;
   }
 
-  texture(const std::string &name) {
+  texture(const std::string &name) : tex(nullptr) {
     // Load a texture resource from a file with the given name. First tries
     // searching in whichever folder is the current working directory, if that
     // fails it will try searching in the module folder (path to .exe file)
+    validData = false;
+    if (name.empty())
+      return;
 
     // Open the file here.
     FILE *input(0);
@@ -81,6 +89,7 @@ struct texture {
     fread(tex, sizeof(detail::Uint32), len, input);
 
     fclose(input);
+    validData = true;
   }
 
   void clear() {
@@ -107,6 +116,7 @@ struct texture {
   ~texture() {
     delete[] tex;
     tex = nullptr;
+    validData = false;
   }
 };
 
@@ -126,20 +136,54 @@ protected:
 
 class Background {
 public:
-  Background(const std::string &tex) : m_texture(tex) {}
+  Background(const std::string &tex) : m_texture(tex), m_x(0), m_y(0) {}
+  Background(const std::string &tex, int x, int y)
+      : m_texture(tex), m_x(x), m_y(y) {}
   virtual ~Background() {}
 
   void draw(detail::RendererSurface &surface) {
     // A background must always have the same resolution as a panel.
-    detail::Uint32 *buffer = surface.GetPixels();
+    if (!m_texture.hasData())
+      return;
 
-    int len =
-        (m_texture.bounds[0] * m_texture.bounds[1] * sizeof(detail::Uint32));
-    memcpy(buffer, m_texture.tex, len);
+    if (m_x > surface.GetWidth() || m_y > surface.GetHeight())
+      return;
+
+    if (m_x == 0 && m_y == 0) {
+      detail::Uint32 *buffer = surface.GetPixels();
+
+      int len =
+          (m_texture.bounds[0] * m_texture.bounds[1] * sizeof(detail::Uint32));
+      memcpy(buffer, m_texture.tex, len);
+    } else {
+      // Complex scenario - render within the bounds of the surface.
+      int stride = surface.GetWidth();
+      int width = m_texture.bounds[0];
+      int height = m_texture.bounds[1];
+
+      if (width > stride)
+        width = stride; // sanity check.
+      if (m_x + width > stride)
+        width -= ((m_x + width) - stride);
+      if (height > surface.GetHeight())
+        height = surface.GetHeight();
+      if (m_y + height > surface.GetHeight())
+        height -= ((m_y + height) - surface.GetHeight());
+
+      for (int i = 0; i < height; ++i) {
+        detail::Uint32 *buffer = surface.GetPixels();
+        // Shift buffer to the correct position.
+        detail::Uint32 *offsetBuffer = buffer + ((m_y + i) * stride) + m_x;
+        memcpy(offsetBuffer, m_texture.tex + (i * m_texture.bounds[0]),
+               width * sizeof(detail::Uint32));
+      }
+    }
   }
 
 protected:
   texture m_texture;
+  int m_x;
+  int m_y;
 };
 
 struct cursor {
@@ -165,7 +209,20 @@ class InputPanel : public Panel, public detail::ScreenObserver {
 
 public:
   InputPanel(detail::RendererSurface &screen, const std::string &bg)
-      : Panel(screen), m_bg(bg), m_cursor('_', 500) {
+      : Panel(screen), m_bg(bg), m_cursor('_', 500), m_panelX(0), m_panelY(0) {
+    CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+    screen.RegisterObserver(this);
+
+    m_x = 0;
+    m_y = 0;
+    m_l = false;
+    m_m = false;
+    m_r = false;
+  }
+  InputPanel(detail::RendererSurface &screen, const std::string &bg, int x,
+             int y)
+      : Panel(screen), m_bg(bg, x, y), m_cursor('_', 500), m_panelX(x),
+        m_panelY(y) {
     CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
     screen.RegisterObserver(this);
 
@@ -209,7 +266,7 @@ public:
 
   virtual bool HandleDrag(int x, int y, bool) override { return false; }
 
-  void update() override {
+  virtual void update() override {
     m_bg.draw(m_screen);
 
     // One of the things we do is to check if the user is hovering or clicking
@@ -221,7 +278,8 @@ public:
       yPos = screenSize - (numStrings * 16);
 
     for (auto &i : m_text) {
-      if (m_screen.RenderText(i, 20, yPos, m_x, m_y, m_l, m_m, m_r))
+      if (m_screen.RenderText(i, m_panelX + 20, m_panelY + yPos, m_x, m_y, m_l,
+                              m_m, m_r))
         openFile(i);
       yPos += 16;
     }
@@ -237,8 +295,8 @@ public:
     } else {
       std::string temp(m_scratch);
       temp.push_back(m_cursor.getCursor());
-      m_screen.RenderText(print::PrintInfo(temp, "", false), 20, yPos, m_x, m_y,
-                          m_l, m_m, m_r);
+      m_screen.RenderText(print::PrintInfo(temp, "", false), m_panelX + 20,
+                          m_panelY + yPos, m_x, m_y, m_l, m_m, m_r);
     }
   }
 
@@ -250,6 +308,10 @@ protected:
   // The scratchpad text used to composition the final output.
   std::string m_scratch;
   cursor m_cursor;
+
+  // Panel location on screen.
+  int m_panelX;
+  int m_panelY;
 
   // Mouse input storage
   int m_x;

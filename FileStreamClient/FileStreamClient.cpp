@@ -1,12 +1,12 @@
 // Copyright (c) - 2015, Shaheed Abdol.
 // Use this code as you wish, but don't blame me.
-#include "impl.hpp"
+#include "impl/main_panel.hpp"
 
 // This is the guts of the renderer, without this it will do nothing.
 DWORD WINAPI Update(LPVOID lpParameter) {
   Renderer *g_renderer = static_cast<Renderer *>(lpParameter);
 
-  impl::RenditionPanel panel(g_renderer->screen);
+  impl::MainPanel panel(g_renderer->screen);
 
   while (g_renderer->IsRunning()) {
     panel.update();

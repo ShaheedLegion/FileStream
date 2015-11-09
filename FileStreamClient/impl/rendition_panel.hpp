@@ -1,54 +1,32 @@
-// Copyright (c) - 2015, Shaheed Abdol.
-// Use this code as you wish, but don't blame me.
-#ifndef IMPL
-#define IMPL
+#pragma once
+#ifndef RENDITION_PANEL_HPP
+#define RENDITION_PANEL_HPP
 
-#include "ui.hpp"
-#include "process_client.hpp"
+#include "../ui/ui.hpp"
+#include "../impl/impl.hpp"
+#include "../impl/process_client.hpp"
 
 namespace impl {
 
-// The command processor will hold all the details.
-struct command_processor {
-  command_processor(game::Output &out) : m_client(out) {}
-
-  bool process_command(ui::InputPanel *panel) {
-    return processInternal(panel, panel->getScratch());
-  }
-
-  bool process_command(ui::InputPanel *panel,
-                       const std::string &overrideCommand) {
-    return processInternal(panel, overrideCommand);
-  }
-
-  void update(ui::InputPanel *panel) {
-    if (panel == nullptr)
-      return;
-
-    m_client.update();
-  }
-
-  const std::string &getAttachDir() { return m_client.getAttachDir(); }
-
-protected:
-  game::ProcessClient m_client;
-
-  bool processInternal(ui::InputPanel *panel, const std::string &command) {
-    if (panel == nullptr)
-      return true; // exit if we get a null panel.
-
-    if (util::icompare(command, "-quit")) {
-      m_client.getOutput().sendOutput("Exiting session, goodbye.");
-      return true;
-    } else {
-      m_client.processCommand(command);
-    }
-    return false;
-  }
-};
-
 class RenditionPanel : public ui::InputPanel, public game::Output {
 public:
+  RenditionPanel(detail::RendererSurface &surface, const std::string &texName,
+                 int x, int y)
+      : InputPanel(surface, texName, x, y), m_processor(*this),
+        m_minBtn("btn_min.graw"), m_dragBtn("btn_drag.graw", true),
+        m_attachBtn("btn_attach.graw"), m_clsBtn("btn_exit.graw") {
+    addText("Welcome to NetChatmium: by Shaheed Abdol. 2015");
+    addText("This is a general c++ chat application.");
+    addText("Press [Esc] to quit.");
+    addText("Type -help [Enter] to get a hint.");
+    addText("-------------------------------------------");
+
+    surface.RegisterObserver(&m_minBtn);
+    surface.RegisterObserver(&m_dragBtn);
+    surface.RegisterObserver(&m_attachBtn);
+    surface.RegisterObserver(&m_clsBtn);
+  }
+
   RenditionPanel(detail::RendererSurface &surface)
       : InputPanel(surface, "bg.graw"), m_processor(*this),
         m_minBtn("btn_min.graw"), m_dragBtn("btn_drag.graw", true),
@@ -92,9 +70,6 @@ public:
     m_dragBtn.draw(m_screen, 760, 60);
     m_attachBtn.draw(m_screen, 760, 110);
     m_clsBtn.draw(m_screen, 760, 160);
-
-    // Now commit those changes to the ui.
-    ui::InputPanel::commit();
   }
 
   virtual void sendOutput(const std::string &data) override {
@@ -143,5 +118,4 @@ protected:
 };
 
 } // namespace impl
-
-#endif // IMPL
+#endif // RENDITION_PANEL_HPP
