@@ -4,23 +4,19 @@
 
 #include "../ui/ui.hpp"
 #include "rendition_panel.hpp"
+#include "chat_input_panel.hpp"
+#include "command_panel.hpp"
 
 namespace impl {
 
-class MainPanel : public ui::InputPanel, public game::Output {
+class MainPanel : public ui::Panel, public game::Output {
 public:
   MainPanel(detail::RendererSurface &surface)
-      : InputPanel(surface, ""), m_chatPanel(surface, "bg.graw", 200, 0) {}
+      : Panel(surface, ""), m_chatPanel(surface, "bg.graw", 0, 0),
+        m_dashPanel(surface, "dash_bg.graw", 600, 0),
+        m_inputPanel(surface, "chat_bg.graw", 0, 500) {}
 
   ~MainPanel() {}
-
-  virtual void process() override {
-    // try to get the text for the 'input' button for the next update.
-    if (m_scratch.empty())
-      return;
-
-    m_exiting = m_chatPanel.exiting();
-  }
 
   virtual void update() override {
     m_bg.draw(m_screen);
@@ -28,41 +24,45 @@ public:
     // Cannot call base update here since that clears the keys queue.
     // ui::InputPanel::update();
 
+    m_dashPanel.update();
     m_chatPanel.update();
-    m_exiting = m_chatPanel.exiting();
+    m_inputPanel.update();
+    m_exiting = m_dashPanel.exiting();
 
     // Now commit those changes to the ui.
-    ui::InputPanel::commit();
+    commit();
   }
 
   virtual void sendOutput(const std::string &data) override {
     if (data.empty())
       return;
 
-    addText(data);
+    m_chatPanel.addText(data);
   }
 
   virtual void sendOutput(const std::vector<std::string> &text) override {
     if (text.empty())
       return;
 
-    addText(text);
+    m_chatPanel.addText(text);
   }
 
   virtual void sendOutput(const print::printQueue &text) override {
     if (text.empty())
       return;
 
-    addText(text);
+    m_chatPanel.addText(text);
   }
 
   virtual void minimizeOutput() override { m_screen.Minimize(true); }
   virtual void flashOutput() override { m_screen.FlashWindow(true); }
 
-  void clearOutput() override { clearText(); }
+  void clearOutput() override { m_chatPanel.clearText(); }
 
 protected:
   RenditionPanel m_chatPanel;
+  CommandPanel m_dashPanel;
+  ChatInputPanel m_inputPanel;
 };
 
 } // namespace impl

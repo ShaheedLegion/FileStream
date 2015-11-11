@@ -51,9 +51,10 @@ public:
     memset(m_backBuffer, 0, (m_w * m_h * (m_bpp / 8)));
   }
 
-  ~RendererSurface() { m_observers.clear(); }
+  ~RendererSurface() {}
 
   void Cleanup() {
+    m_observers.clear();
     delete[] m_pixels;
     delete[] m_backBuffer;
     std::cout << "Destroying surface";

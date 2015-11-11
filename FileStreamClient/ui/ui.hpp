@@ -120,20 +120,6 @@ struct texture {
   }
 };
 
-class Panel {
-public:
-  Panel(detail::RendererSurface &screen) : m_screen(screen), m_exiting(false) {}
-  virtual ~Panel() {}
-
-  virtual void update() { m_screen.Flip(true); }
-
-  bool exiting() const { return m_exiting; }
-
-protected:
-  detail::RendererSurface &m_screen;
-  bool m_exiting;
-};
-
 class Background {
 public:
   Background(const std::string &tex) : m_texture(tex), m_x(0), m_y(0) {}
@@ -142,14 +128,14 @@ public:
   virtual ~Background() {}
 
   void draw(detail::RendererSurface &surface) {
-    // A background must always have the same resolution as a panel.
     if (!m_texture.hasData())
       return;
 
     if (m_x > surface.GetWidth() || m_y > surface.GetHeight())
       return;
 
-    if (m_x == 0 && m_y == 0) {
+    if (m_x == 0 && m_y == 0 && m_texture.bounds[0] == surface.GetWidth() &&
+        m_texture.bounds[1] == surface.GetHeight()) {
       detail::Uint32 *buffer = surface.GetPixels();
 
       int len =
@@ -201,6 +187,33 @@ struct cursor {
   }
 };
 
+
+class Panel {
+public:
+  Panel(detail::RendererSurface &screen, const std::string& bg) : m_bg(bg), m_screen(screen), m_exiting(false) { Init(); }
+  Panel(detail::RendererSurface &screen, const std::string& bg, int x, int y) : m_bg(bg, x, y), m_screen(screen), m_exiting(false) { Init(); }
+  virtual ~Panel() {}
+
+  void openDir(const std::string &path) {
+    ShellExecute(0, 0, path.c_str(), 0, 0, SW_SHOW);
+  }
+
+  virtual void update() { m_bg.draw(m_screen); }
+  virtual void commit() { m_screen.Flip(true); }
+
+  bool exiting() const { return m_exiting; }
+
+protected:
+  Background m_bg;
+  detail::RendererSurface &m_screen;
+  bool m_exiting;
+
+  void Init() {
+    CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+  }
+};
+
+
 class InputPanel : public Panel, public detail::ScreenObserver {
 
   void openFile(const print::PrintInfo &item) {
@@ -209,8 +222,8 @@ class InputPanel : public Panel, public detail::ScreenObserver {
 
 public:
   InputPanel(detail::RendererSurface &screen, const std::string &bg)
-      : Panel(screen), m_bg(bg), m_cursor('_', 500), m_panelX(0), m_panelY(0) {
-    CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+      : Panel(screen, bg), m_cursor('_', 500), m_panelX(0), m_panelY(0) {
+    
     screen.RegisterObserver(this);
 
     m_x = 0;
@@ -221,9 +234,9 @@ public:
   }
   InputPanel(detail::RendererSurface &screen, const std::string &bg, int x,
              int y)
-      : Panel(screen), m_bg(bg, x, y), m_cursor('_', 500), m_panelX(x),
+      : Panel(screen, bg, x, y), m_cursor('_', 500), m_panelX(x),
         m_panelY(y) {
-    CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+
     screen.RegisterObserver(this);
 
     m_x = 0;
@@ -233,10 +246,6 @@ public:
     m_r = false;
   }
   virtual ~InputPanel() {}
-
-  void openDir(const std::string &path) {
-    ShellExecute(0, 0, path.c_str(), 0, 0, SW_SHOW);
-  }
 
   void addText(const std::string &text) {
     m_text.push_back(print::PrintInfo(text, "", false));
@@ -267,7 +276,7 @@ public:
   virtual bool HandleDrag(int x, int y, bool) override { return false; }
 
   virtual void update() override {
-    m_bg.draw(m_screen);
+    Panel::update();
 
     // One of the things we do is to check if the user is hovering or clicking
     // on some clickable text.
@@ -300,10 +309,10 @@ public:
     }
   }
 
-  void commit() { Panel::update(); }
+  void commit() { Panel::commit(); }
 
 protected:
-  Background m_bg;
+
   print::printQueue m_text;
   // The scratchpad text used to composition the final output.
   std::string m_scratch;
@@ -321,6 +330,103 @@ protected:
   bool m_r;
 };
 
+
+class OutputPanel : public Panel, public detail::ScreenObserver {
+
+  void openFile(const print::PrintInfo &item) {
+    ShellExecute(0, 0, item.bgInfo.c_str(), 0, 0, SW_SHOW);
+  }
+
+public:
+  OutputPanel(detail::RendererSurface &screen, const std::string &bg)
+      : Panel(screen, bg), m_panelX(0), m_panelY(0) {
+    
+    screen.RegisterObserver(this);
+
+    m_x = 0;
+    m_y = 0;
+    m_l = false;
+    m_m = false;
+    m_r = false;
+  }
+  OutputPanel(detail::RendererSurface &screen, const std::string &bg, int x,
+             int y)
+      : Panel(screen, bg, x, y), m_panelX(x),
+        m_panelY(y) {
+
+    screen.RegisterObserver(this);
+
+    m_x = 0;
+    m_y = 0;
+    m_l = false;
+    m_m = false;
+    m_r = false;
+  }
+  virtual ~OutputPanel() {}
+
+  void addText(const std::string &text) {
+    m_text.push_back(print::PrintInfo(text, "", false));
+  }
+  void addText(const std::vector<std::string> &text) {
+    for (int i = 0; i < text.size(); ++i) {
+      m_text.push_back(print::PrintInfo(text[i], "", false));
+    }
+  }
+  void addText(const print::printQueue &text) {
+    m_text.insert(m_text.end(), text.begin(), text.end());
+  }
+
+  void getText(print::printQueue &text) { text = m_text; }
+  void clearText() { m_text.clear(); }
+
+  virtual void process() {}
+
+  virtual void HandleMouse(int x, int y, bool l, bool m, bool r) override {
+    m_x = x;
+    m_y = y;
+    m_l = l;
+    m_m = m;
+    m_r = r;
+  }
+
+  virtual bool HandleDrag(int x, int y, bool) override { return false; }
+
+  virtual void update() override {
+    Panel::update();
+
+    // One of the things we do is to check if the user is hovering or clicking
+    // on some clickable text.
+    int numStrings{static_cast<int>(m_text.size())};
+    int screenSize = m_screen.GetHeight() - 40;
+    int yPos = 20;
+    if (screenSize < (numStrings * 16))
+      yPos = screenSize - (numStrings * 16);
+
+    for (auto &i : m_text) {
+      if (m_screen.RenderText(i, m_panelX + 20, m_panelY + yPos, m_x, m_y, m_l,
+                              m_m, m_r))
+        openFile(i);
+      yPos += 16;
+    }
+  }
+
+  void commit() { Panel::commit(); }
+
+protected:
+
+  print::printQueue m_text;
+
+  // Panel location on screen.
+  int m_panelX;
+  int m_panelY;
+
+  // Mouse input storage
+  int m_x;
+  int m_y;
+  bool m_l;
+  bool m_m;
+  bool m_r;
+};
 /*
 The UI representation is a bit chaotic at the moment, but that will change very
 soon - I plan to refactor the entire codebase and move things into header and

@@ -16,12 +16,12 @@ struct command_processor {
     return processInternal(panel, panel->getScratch());
   }
 
-  bool process_command(ui::InputPanel *panel,
+  bool process_command(ui::Panel *panel,
                        const std::string &overrideCommand) {
     return processInternal(panel, overrideCommand);
   }
 
-  void update(ui::InputPanel *panel) {
+  void update(ui::Panel *panel) {
     if (panel == nullptr)
       return;
 
@@ -33,7 +33,7 @@ struct command_processor {
 protected:
   game::ProcessClient m_client;
 
-  bool processInternal(ui::InputPanel *panel, const std::string &command) {
+  bool processInternal(ui::Panel *panel, const std::string &command) {
     if (panel == nullptr)
       return true; // exit if we get a null panel.
 
