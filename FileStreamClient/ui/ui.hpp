@@ -166,6 +166,20 @@ public:
     }
   }
 
+  int getWidth() {
+    if (!m_texture.hasData())
+      return 0;
+
+    return m_texture.bounds[0];
+  }
+
+  int getHeight() {
+    if (!m_texture.hasData())
+      return 0;
+
+    return m_texture.bounds[1];
+  }
+
 protected:
   texture m_texture;
   int m_x;
@@ -187,11 +201,16 @@ struct cursor {
   }
 };
 
-
 class Panel {
 public:
-  Panel(detail::RendererSurface &screen, const std::string& bg) : m_bg(bg), m_screen(screen), m_exiting(false) { Init(); }
-  Panel(detail::RendererSurface &screen, const std::string& bg, int x, int y) : m_bg(bg, x, y), m_screen(screen), m_exiting(false) { Init(); }
+  Panel(detail::RendererSurface &screen, const std::string &bg)
+      : m_bg(bg), m_screen(screen), m_exiting(false) {
+    Init();
+  }
+  Panel(detail::RendererSurface &screen, const std::string &bg, int x, int y)
+      : m_bg(bg, x, y), m_screen(screen), m_exiting(false) {
+    Init();
+  }
   virtual ~Panel() {}
 
   void openDir(const std::string &path) {
@@ -213,7 +232,6 @@ protected:
   }
 };
 
-
 class InputPanel : public Panel, public detail::ScreenObserver {
 
   void openFile(const print::PrintInfo &item) {
@@ -223,7 +241,7 @@ class InputPanel : public Panel, public detail::ScreenObserver {
 public:
   InputPanel(detail::RendererSurface &screen, const std::string &bg)
       : Panel(screen, bg), m_cursor('_', 500), m_panelX(0), m_panelY(0) {
-    
+
     screen.RegisterObserver(this);
 
     m_x = 0;
@@ -234,8 +252,7 @@ public:
   }
   InputPanel(detail::RendererSurface &screen, const std::string &bg, int x,
              int y)
-      : Panel(screen, bg, x, y), m_cursor('_', 500), m_panelX(x),
-        m_panelY(y) {
+      : Panel(screen, bg, x, y), m_cursor('_', 500), m_panelX(x), m_panelY(y) {
 
     screen.RegisterObserver(this);
 
@@ -297,7 +314,7 @@ public:
     std::vector<std::pair<WPARAM, LPARAM>> chars;
     m_screen.GetInput(keys);
     m_screen.GetCharInput(chars);
-    bool add{util::MutateString(keys, chars, 60, &m_scratch)};
+    bool add{util::MutateString(keys, chars, 56, &m_scratch)};
     if (add && !m_scratch.empty()) {
       process();
       m_scratch = "";
@@ -312,7 +329,6 @@ public:
   void commit() { Panel::commit(); }
 
 protected:
-
   print::printQueue m_text;
   // The scratchpad text used to composition the final output.
   std::string m_scratch;
@@ -330,7 +346,6 @@ protected:
   bool m_r;
 };
 
-
 class OutputPanel : public Panel, public detail::ScreenObserver {
 
   void openFile(const print::PrintInfo &item) {
@@ -340,7 +355,7 @@ class OutputPanel : public Panel, public detail::ScreenObserver {
 public:
   OutputPanel(detail::RendererSurface &screen, const std::string &bg)
       : Panel(screen, bg), m_panelX(0), m_panelY(0) {
-    
+
     screen.RegisterObserver(this);
 
     m_x = 0;
@@ -350,9 +365,8 @@ public:
     m_r = false;
   }
   OutputPanel(detail::RendererSurface &screen, const std::string &bg, int x,
-             int y)
-      : Panel(screen, bg, x, y), m_panelX(x),
-        m_panelY(y) {
+              int y)
+      : Panel(screen, bg, x, y), m_panelX(x), m_panelY(y) {
 
     screen.RegisterObserver(this);
 
@@ -397,7 +411,7 @@ public:
     // One of the things we do is to check if the user is hovering or clicking
     // on some clickable text.
     int numStrings{static_cast<int>(m_text.size())};
-    int screenSize = m_screen.GetHeight() - 40;
+    int screenSize = m_bg.getHeight() - 40;
     int yPos = 20;
     if (screenSize < (numStrings * 16))
       yPos = screenSize - (numStrings * 16);
@@ -413,7 +427,6 @@ public:
   void commit() { Panel::commit(); }
 
 protected:
-
   print::printQueue m_text;
 
   // Panel location on screen.

@@ -12,18 +12,23 @@ class ChatInputPanel : public ui::InputPanel {
 public:
   ChatInputPanel(detail::RendererSurface &surface, const std::string &texName,
                  int x, int y)
-      : InputPanel(surface, texName, x, y){
-  }
+      : InputPanel(surface, texName, x, y) {}
 
-  ChatInputPanel(detail::RendererSurface &surface)
-      : InputPanel(surface, "") {
-  }
+  ChatInputPanel(detail::RendererSurface &surface) : InputPanel(surface, "") {}
 
   ~ChatInputPanel() {}
 
-  virtual void process() override {
+  virtual void process() override { m_lastCommand = m_scratch; }
+
+  void getLastCommand(std::string &output) {
+    if (!m_lastCommand.empty()) {
+      output = m_lastCommand;
+      m_lastCommand = "";
+    }
   }
 
+protected:
+  std::string m_lastCommand;
 };
 
 } // namespace impl

@@ -83,6 +83,8 @@
     <ClCompile Include="FileStreamClient.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="impl\chat_input_panel.hpp" />
+    <ClInclude Include="impl\command_panel.hpp" />
     <ClInclude Include="impl\impl.hpp" />
     <ClInclude Include="impl\main_panel.hpp" />
     <ClInclude Include="impl\process_client.hpp" />
