@@ -2,12 +2,13 @@
 #ifndef COMMAND_PANEL_HPP
 #define COMMAND_PANEL_HPP
 
-#include "../ui/ui.hpp"
+#include "../ui/ui.h"
 #include "../impl/impl.hpp"
 #include "../impl/process_client.hpp"
 
 namespace impl {
 
+/*
 class CommandPanel : public ui::Panel {
 public:
   CommandPanel(detail::RendererSurface &surface, const std::string &texName,
@@ -62,6 +63,6 @@ protected:
   ui::Button m_attachBtn;
   ui::Button m_clsBtn;
 };
-
+*/
 } // namespace impl
 #endif // COMMAND_PANEL_HPP

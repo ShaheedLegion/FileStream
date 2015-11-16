@@ -3,7 +3,7 @@
 #ifndef IMPL
 #define IMPL
 
-#include "../ui/ui.hpp"
+#include "../ui/ui.h"
 #include "process_client.hpp"
 
 namespace impl {
@@ -12,19 +12,11 @@ namespace impl {
 struct command_processor {
   command_processor(game::Output &out) : m_client(out) {}
 
-  bool process_command(ui::InputPanel *panel) {
-    return processInternal(panel, panel->getScratch());
+  bool process_command(const std::string &overrideCommand) {
+    return processInternal(overrideCommand);
   }
 
-  bool process_command(ui::Panel *panel,
-                       const std::string &overrideCommand) {
-    return processInternal(panel, overrideCommand);
-  }
-
-  void update(ui::Panel *panel) {
-    if (panel == nullptr)
-      return;
-
+  void update() {
     m_client.update();
   }
 
@@ -33,16 +25,15 @@ struct command_processor {
 protected:
   game::ProcessClient m_client;
 
-  bool processInternal(ui::Panel *panel, const std::string &command) {
-    if (panel == nullptr)
-      return true; // exit if we get a null panel.
-
+  bool processInternal(const std::string &command) {
+	  /*
     if (util::icompare(command, "-quit")) {
       m_client.getOutput().sendOutput("Exiting session, goodbye.");
       return true;
     } else {
       m_client.processCommand(command);
     }
+	*/
     return false;
   }
 };

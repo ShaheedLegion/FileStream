@@ -292,8 +292,8 @@ void InflateData(FlateResult &result) {
   int nErr = inflateInit2(&zInfo, MAX_WBITS | 32);
   if (nErr == Z_OK) {
     nErr = inflate(&zInfo, Z_FINISH);
-    if (nErr == Z_STREAM_END)
-      result.outDataSize = zInfo.total_out;
+    // if (nErr == Z_STREAM_END)
+    result.outDataSize = zInfo.total_out;
   }
   inflateEnd(&zInfo);
 }
@@ -1198,7 +1198,7 @@ DWORD WINAPI ClientCommsConnection(LPVOID param) {
 
     client->ProcessQueues();
 
-    Sleep(10);
+    Sleep(5);
   }
 
   return 0;

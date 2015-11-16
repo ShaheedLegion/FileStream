@@ -41,9 +41,13 @@
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <LinkIncremental>true</LinkIncremental>
+    <IncludePath>$(IncludePath)</IncludePath>
+    <SourcePath>$(SourcePath)</SourcePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <LinkIncremental>false</LinkIncremental>
+    <IncludePath>$(IncludePath)</IncludePath>
+    <SourcePath>$(SourcePath)</SourcePath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
@@ -81,6 +85,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="FileStreamClient.cpp" />
+    <ClCompile Include="ui\paths.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="impl\chat_input_panel.hpp" />
@@ -92,7 +97,15 @@
     <ClInclude Include="process_client.hpp" />
     <ClInclude Include="Renderer.hpp" />
     <ClInclude Include="thread.hpp" />
-    <ClInclude Include="ui\ui.hpp" />
+    <ClInclude Include="ui\button.h" />
+    <ClInclude Include="ui\detail.h" />
+    <ClInclude Include="ui\mem.h" />
+    <ClInclude Include="ui\panel.h" />
+    <ClInclude Include="ui\paths.h" />
+    <ClInclude Include="ui\singleton.h" />
+    <ClInclude Include="ui\texture_loader.h" />
+    <ClInclude Include="ui\ui.h" />
+    <ClInclude Include="ui\ui_impl.hpp" />
     <ClInclude Include="util\util.hpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

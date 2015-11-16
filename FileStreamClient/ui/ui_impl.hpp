@@ -201,6 +201,7 @@ struct cursor {
   }
 };
 
+
 class Panel {
 public:
   Panel(detail::RendererSurface &screen, const std::string &bg)
@@ -381,13 +382,24 @@ public:
   void addText(const std::string &text) {
     m_text.push_back(print::PrintInfo(text, "", false));
   }
+
   void addText(const std::vector<std::string> &text) {
     for (int i = 0; i < text.size(); ++i) {
       m_text.push_back(print::PrintInfo(text[i], "", false));
     }
   }
+
   void addText(const print::printQueue &text) {
-    m_text.insert(m_text.end(), text.begin(), text.end());
+    for (auto i : text) {
+      if (i.text.length() > 50) {
+        m_text.push_back(
+            print::PrintInfo(i.text.substr(0, 50), i.bgInfo, i.clickable));
+        m_text.push_back(
+            print::PrintInfo(i.text.substr(50), i.bgInfo, i.clickable));
+      } else {
+        m_text.push_back(i);
+      }
+    }
   }
 
   void getText(print::printQueue &text) { text = m_text; }

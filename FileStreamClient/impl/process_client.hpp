@@ -62,6 +62,7 @@ public:
   ProcessClient(Output &out) : m_out(out) {}
 
   void processCommand(const std::string &command) {
+	  /*
     if (util::icompare(command, "-help")) {
       m_out.sendOutput("  -name [alias]: Set your alias for this session.");
       m_out.sendOutput("        You must do this first.");
@@ -107,12 +108,13 @@ public:
       m_out.clearOutput(); // works
       return;
     }
-
+	*/
     // If the message could not be parsed, then it's a general chat message.
     m_client.AddMessage(command);
   }
 
   void setAlias(const std::string &command) {
+	  /*
     // Parse out the user alias and set it on the net client.
     std::string alias{util::split(command, "-name", true)};
     if (alias.empty()) {
@@ -122,11 +124,12 @@ public:
       m_out.sendOutput("Please choose a name that's only 10 characters long.");
       return;
     }
-
-    m_client.SetAlias(alias);
+	*/
+    m_client.SetAlias(command);
   }
 
   void connectServer(const std::string &command) {
+	  /*
     // Parse out the IP address and connect to the server.
     std::string ip{util::split(command, "-con", true)};
     if (ip.empty()) {
@@ -135,6 +138,7 @@ public:
     }
 
     m_client.Connect(ip);
+	*/
   }
 
   void listUsers() { m_client.GetUserList(); }
@@ -159,6 +163,7 @@ public:
   }
 
   void sendFileUser(const std::string &command) {
+	  /*
     // Send the private message - preprocess for malformed user names.
     std::string user{util::split(command, "-pfil", true)};
     std::string name;
@@ -170,6 +175,7 @@ public:
     }
 
     m_out.sendOutput("File sending cancelled.");
+	*/
   }
 
   const std::string &getAttachDir() {

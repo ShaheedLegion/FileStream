@@ -2,12 +2,13 @@
 #ifndef RENDITION_PANEL_HPP
 #define RENDITION_PANEL_HPP
 
-#include "../ui/ui.hpp"
+#include "../ui/ui.h"
 #include "../impl/impl.hpp"
 #include "../impl/process_client.hpp"
 
 namespace impl {
 
+/*
 class RenditionPanel : public ui::OutputPanel {
 public:
   RenditionPanel(detail::RendererSurface &surface, const std::string &texName,
@@ -31,6 +32,6 @@ public:
 
   ~RenditionPanel() {}
 };
-
+*/
 } // namespace impl
 #endif // RENDITION_PANEL_HPP

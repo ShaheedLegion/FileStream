@@ -2,12 +2,13 @@
 #ifndef CHAT_INPUT_PANEL_HPP
 #define CHAT_INPUT_PANEL_HPP
 
-#include "../ui/ui.hpp"
+#include "../ui/ui.h"
 #include "../impl/impl.hpp"
 #include "../impl/process_client.hpp"
 
 namespace impl {
 
+/*
 class ChatInputPanel : public ui::InputPanel {
 public:
   ChatInputPanel(detail::RendererSurface &surface, const std::string &texName,
@@ -30,6 +31,6 @@ public:
 protected:
   std::string m_lastCommand;
 };
-
+*/
 } // namespace impl
 #endif // CHAT_INPUT_PANEL_HPP
