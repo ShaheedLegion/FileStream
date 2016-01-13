@@ -2,6 +2,8 @@
 // Use this code as you wish, but don't blame me.
 #include "Renderer.hpp"
 #include "impl\main_panel.hpp"
+#include "xml\src\pugixml.hpp"
+#include "util\util.hpp"
 
 namespace adapter {
 class Observer : public detail::ScreenObserver {
@@ -28,7 +30,26 @@ public:
 DWORD WINAPI Update(LPVOID lpParameter) {
   Renderer *g_renderer = static_cast<Renderer *>(lpParameter);
 
-  impl::MainPanel panel;
+  // We create the UI here based on a simple xml file that describes the panels.
+  std::vector<std::string> paths;
+  util::Paths::getInstance()->getPaths(paths, g_renderer->getUIName());
+  pugi::xml_document uiTree;
+  bool loaded = false;
+
+  for (auto path : paths) {
+    pugi::xml_parse_result result = uiTree.load_file(path.c_str());
+    if (result.status == pugi::xml_parse_status::status_ok) {
+      loaded = true;
+      break;
+    }
+  }
+
+  if (!loaded) {
+    std::cout << "Could not load main interface definition." << std::endl;
+    return -1;
+  }
+
+  impl::MainPanel &panel(impl::MainPanel::ConstructUI(uiTree));
   adapter::Observer fakeObserver(&panel);
 
   g_renderer->screen.RegisterObserver(&fakeObserver);
@@ -47,6 +68,6 @@ DWORD WINAPI Update(LPVOID lpParameter) {
 }
 
 int main(int argc, char *argv[]) {
-  Renderer renderer("Rendition", &Update, nullptr, true);
+  Renderer renderer("Rendition", "main.xml", &Update, nullptr, true);
   return 0;
 }

@@ -8,123 +8,135 @@
 #include "rendition_panel.hpp"
 #include "chat_input_panel.hpp"
 #include "command_panel.hpp"
+#include "../xml/src/pugixml.hpp"
+#include <map>
 
 namespace impl {
 
-class CommandPanel : public ui::Panel {
-public:
-  CommandPanel(const detail::Texture &tex) : ui::Panel(tex) {
-    detail::TextureLoader *loader = detail::TextureLoader::getInstance();
-    ui::Button *btn =
-        new ui::Button(loader->getTexture("btn_min.graw"), nullptr);
-    btn->setX(0);
-    btn->setY(0);
-    AddChild(btn);
-  }
-};
+class MainPanel : public ui::Control {
+  typedef std::map<std::string, ui::Control *> PanelsType;
+  PanelsType panels;
 
-class MainPanel : public detail::Interactive {
-  ui::Control *root;
+  static void CreateDom(Control *parent, pugi::xml_node &node,
+                        PanelsType &panels) {
+    std::string nodeName(node.attribute("name").value());
 
-public:
-  MainPanel() {
-    detail::TextureLoader *loader = detail::TextureLoader::getInstance();
-    root = new ui::Control(loader->getTexture(""));
+    if (panels.find(nodeName) == panels.end())
+      panels[nodeName] = new ui::Control();
 
-    CommandPanel *panel = new CommandPanel(loader->getTexture("dash_bg.graw"));
-	panel->setX(0);
-	panel->setY(0);
-    root->AddChild(panel);
+    for (pugi::xml_attribute attr = node.first_attribute(); attr;
+         attr = attr.next_attribute())
+      panels[nodeName]->SetAttribute(attr.name(), attr.value());
+
+    parent->AddChild(panels[nodeName]);
+
+    for (pugi::xml_node child = node.first_child(); child;
+         child = child.next_sibling())
+      CreateDom(panels[nodeName], child, panels);
   }
 
-  ~MainPanel() { delete root; }
+  static void PositionControls(Control *parent, int x, int y, int w, int h) {
+    // Here we apply the layout rules. We assume the parent has been positioned.
+    int startX = x;
+    int startY = y;
+    int pwidth = w;
+    int pheight = h;
 
-  void update(detail::Uint32 *bits, int w, int h) {
+    switch (parent->getOrientation()) {
+    case ui::HORIZONTAL:
+    case ui::VERTICAL: {
+      // Start laying out from top to bottom.
+      for (auto i : parent->getChildren()) {
+        ui::DimensionInfo &width(i->getWidth());
+        ui::DimensionInfo &height(i->getHeight());
+        int controlWidth = width.getValue(pwidth);
+        int controlHeight = height.getValue(pheight);
 
-    if (root != nullptr) {
-      detail::RenderBuffer buffer(w, h, bits);
-      root->render(buffer);
+        // Now place the control there.
+        int controlX = startX;
+        int controlY = startY;
+
+        if (i->getHAlign() == ui::LEFT) {
+          // Do nothing because it's already left aligned.
+        } else if (i->getHAlign() == ui::CENTER) {
+          // Align the control in the center of the remaining space.
+          controlX = startX + (((pwidth - startX) / 2) - (controlWidth / 2));
+        } else if (i->getHAlign() == ui::RIGHT) {
+          // Align the control to the right in the remaining space.
+          controlX = pwidth - (controlWidth);
+        }
+
+        if (i->getVAlign() == ui::TOP) {
+          // Do nothing since it's already top aligned.
+        } else if (i->getVAlign() == ui::MIDDLE) {
+          // Align the control in the middle of the remaining space.
+          controlY = startY + (((pheight) / 2) - (controlHeight / 2));
+        } else if (i->getVAlign() == ui::BOTTOM) {
+          // Align the control to the bottom of the remaining space.
+          controlY = pheight - (controlHeight);
+        }
+
+        i->setX(controlX);
+        i->setY(controlY);
+        i->setW(controlWidth);
+        i->setH(controlHeight);
+
+        startX = controlX + controlWidth;
+        startY = controlY + controlHeight;
+		pwidth -= controlWidth;
+		pheight -= controlHeight;
+      }
+    } break;
+    case ui::STACK: {
+      // Do something special here.
+    } break;
+    }
+
+    for (auto i : parent->getChildren()) {
+      PositionControls(i, i->getX(), i->getY(), i->getW(), i->getH());
     }
   }
 
-  virtual void HandleKey(int keyCode, bool pressed) override {
-    if (root != nullptr)
-      root->HandleKey(keyCode, pressed);
-  }
-
-  // We can accomplish all other events with this one - drag, move, capture.
-  virtual void HandleMouse(int mx, int my, bool l, bool m, bool r) override {
-    if (root != nullptr)
-      root->HandleMouse(mx, my, l, m, r);
-  }
-};
-
-/*
-class MainPanel : public ui::Panel, public game::Output {
 public:
-  MainPanel(detail::RendererSurface &surface)
-      : Panel(surface, ""), m_processor(*this),
-        m_chatPanel(surface, "bg.graw", 0, 0),
-        m_dashPanel(surface, "dash_bg.graw", 600, 0),
-        m_inputPanel(surface, "chat_bg.graw", 0, 500) {}
+  static MainPanel &ConstructUI(pugi::xml_document &uiTree) {
+    // Parse the document tree to get at the panel
+    // We know the structure of this thing, so we can juse use it.
+    static MainPanel *impl{nullptr};
+    if (impl == nullptr) {
+      impl = new MainPanel(uiTree.first_child());
+
+      // We can immediately add the panels to the map here.
+    }
+
+    return *impl;
+  }
 
   ~MainPanel() {}
 
-  virtual void update() override {
-    m_bg.draw(m_screen);
+  void update(detail::Uint32 *bits, int w, int h) {
+    PositionControls(this, getX(), getY(), w, h);
 
-    // Display output processing.
-    m_processor.update(this);
-
-    m_dashPanel.update();
-    m_chatPanel.update();
-    m_inputPanel.update();
-
-    std::string text;
-    m_inputPanel.getLastCommand(text);
-    if (!text.empty())
-      m_processor.process_command(this, text);
-
-    m_dashPanel.processButtons(m_processor);
-    m_exiting = m_dashPanel.exiting();
-
-    // Now commit those changes to the ui.
-    commit();
+    detail::RenderBuffer buffer(w, h, bits);
+    render(buffer);
   }
 
-  virtual void sendOutput(const std::string &data) override {
-    if (data.empty())
-      return;
+private:
+  MainPanel(pugi::xml_node &node) : ui::Control() {
+    for (pugi::xml_attribute attr = node.first_attribute(); attr;
+         attr = attr.next_attribute())
+      SetAttribute(attr.name(), attr.value());
 
-    m_chatPanel.addText(data);
+    // So at this point we need something that will iterate through the tree and
+    // add the child controls .... this should be interesting.
+    for (pugi::xml_node child = node.first_child(); child;
+         child = child.next_sibling())
+      CreateDom(this, child, panels);
+
+    setX(0);
+    setY(0);
   }
-
-  virtual void sendOutput(const std::vector<std::string> &text) override {
-    if (text.empty())
-      return;
-
-    m_chatPanel.addText(text);
-  }
-
-  virtual void sendOutput(const print::printQueue &text) override {
-    if (text.empty())
-      return;
-
-    m_chatPanel.addText(text);
-  }
-
-  virtual void minimizeOutput() override { m_screen.Minimize(true); }
-  virtual void flashOutput() override { m_screen.FlashWindow(true); }
-
-  void clearOutput() override { m_chatPanel.clearText(); }
-
-protected:
-  command_processor m_processor;
-  RenditionPanel m_chatPanel;
-  CommandPanel m_dashPanel;
-  ChatInputPanel m_inputPanel;
 };
-*/
+
 } // namespace impl
 
 #endif // _MAIN_PANEL_HPP

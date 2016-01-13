@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<ui name="application" background="ui\bg.graw">
+  <panel name="login" width="100%" height="100%" valign="middle" background="ui\login\bg.graw">
+    <panel name="login_content" width="100%" height="auto" background="ui\login\login_bg.graw" valign="middle" orientation="vertical">
+      <input name="user_name" width="100%" height="40px" background="0xffffffff" />
+      <check name="auto_login" width="auto" height="auto" text="Remember me?" />
+    </panel>
+  </panel>
+  
+  <panel name="chat" width="100%" height="100%" background="ui\chat\bg.graw">
+    <panel name="chat_content" width="100%" height="90%" background="ui\chat\content_bg.graw" orientation="stack">
+      <list name="content_view" width="100%" heigh="100%" overflow_constraint="width"/>
+      <button name="menu" width="auto" height="auto" background="ui\chat\menu.graw" />
+    </panel>
+    
+    <panel name="chat_inputs" width="100%" height="10%" background="ui\chat\chat_input.graw" orientation="horizontal">
+      <input name="chat_text" width="auto" height="100%" background="0xffffffff" />
+      <button name="chat_send" width="auto" height="auto" background="ui\chat\chat_send.graw" />
+    </panel>
+  </panel>
+
+  <!--
+  There will probably be more panels - like the panel that shows up when you select the menu, but I'll code those
+  according to our needs, instead of trying to code everything in one go.
+  -->
+</ui>

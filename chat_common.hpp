@@ -573,6 +573,7 @@ public:
           std::string data = msg.packet.data;
           data.append(" - has taken the red pill.");
 
+          std::cout << "NB. " << data << std::endl;
           // Compress the response.
           flate::FlateResult compressed(data.c_str(), data.length(),
                                         data.length() * 2);

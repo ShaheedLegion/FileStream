@@ -18,9 +18,60 @@
     <ClCompile Include="FileStreamClient.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="ui\paths.cpp">
+      <Filter>Header Files</Filter>
+    </ClCompile>
+    <ClCompile Include="xml\src\pugixml.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="impl.hpp">
+    <ClInclude Include="ui\button.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ui\detail.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ui\mem.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ui\panel.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ui\paths.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ui\singleton.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ui\texture_loader.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ui\ui.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ui\ui_impl.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="impl\chat_input_panel.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="impl\command_panel.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="impl\impl.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="impl\main_panel.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="impl\process_client.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="impl\rendition_panel.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="util\util.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="process_client.hpp">
@@ -32,10 +83,10 @@
     <ClInclude Include="thread.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="ui.hpp">
+    <ClInclude Include="xml\src\pugiconfig.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="util.hpp">
+    <ClInclude Include="xml\src\pugixml.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

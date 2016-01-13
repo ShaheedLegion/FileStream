@@ -10,7 +10,7 @@ namespace ui {
 class Panel : public Control {
 
 public:
-  Panel(const detail::Texture &texture) : Control(texture) {}
+  Panel(const detail::Texture &texture) : Control() { SetTexture(texture); }
 
   virtual ~Panel() {}
 };

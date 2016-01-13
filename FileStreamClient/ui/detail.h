@@ -5,6 +5,14 @@
 namespace detail {
 typedef unsigned int Uint32;
 
+#pragma pack(1)
+struct RGBA {
+  unsigned char r;
+  unsigned char g;
+  unsigned char b;
+  unsigned char a;
+};
+
 struct RenderBuffer {
   int width;
   int height;
@@ -33,8 +41,19 @@ struct RenderBuffer {
     if (staticImg && x == 0 && y == 0 && width == target.width &&
         height == target.height) {
 
-      int len = (width * height * sizeof(detail::Uint32));
-      memcpy(target.bits, bits, len);
+      int len = (width * height);
+      RGBA *alias = reinterpret_cast<RGBA *>(bits);
+      detail::Uint32 *aliasBits = target.bits;
+
+      while (len > 0) {
+        // Perform the blending - we don't support true alpha yet.
+        if (alias->a != 0)
+          *aliasBits = *(reinterpret_cast<detail::Uint32 *>(alias));
+
+        ++aliasBits;
+        ++alias;
+        --len;
+      }
     } else {
       // Complex scenario - render within the bounds of the surface.
       int stride = target.width;
@@ -54,10 +73,19 @@ struct RenderBuffer {
 
       for (int i = 0; i < nheight; ++i) {
         // Shift buffer to the correct position.
-        detail::Uint32 *offsetBuffer =
-            target.bits + ((y + i) * stride) + x;
-        memcpy(offsetBuffer, bits + ((i  + offsetFrame) * width),
-               nwidth * sizeof(detail::Uint32));
+        detail::Uint32 *offsetBuffer = target.bits + ((y + i) * stride) + x;
+
+		detail::RGBA *thisBuffer = reinterpret_cast<detail::RGBA*>(bits + ((i) * width));
+		for (int tx = 0; tx < nwidth; ++tx) {
+			if (thisBuffer->a != 0) {
+				*offsetBuffer = *(reinterpret_cast<detail::Uint32 *>(thisBuffer));
+			}
+			++offsetBuffer;
+			++thisBuffer;
+		}
+
+        //memcpy(offsetBuffer, bits + ((i + offsetFrame) * width),
+        //       nwidth * sizeof(detail::Uint32));
       }
     }
   }
@@ -121,6 +149,17 @@ public:
   Texture(int w, int h, Uint32 *bits) : data(w, h, bits) {
     setW(w);
     setH(h);
+  }
+
+  Texture(int color, int w, int h, Uint32 *bits) : data(w, h, bits) {
+    setW(w);
+    setH(h);
+
+    if (data.bits == nullptr) {
+      // Ok, it's null, so we push the single color pixel into it.
+      data.bits = new Uint32[w * h];
+      memset(data.bits, color, w * h * sizeof(Uint32));
+    }
   }
 
   Texture(const Texture &other) : data(other.getData()) {

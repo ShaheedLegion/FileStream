@@ -20,26 +20,30 @@ class Button : public Control {
     if (mx >= getX() && mx <= getX() + getW()) {
       if (my >= getY() && my <= getY() + getH()) {
         if (l) {
-          getTexture().setCurrentFrame(2);
+          if (getTexture())
+            getTexture()->setCurrentFrame(2);
           if (handler)
             handler->ButtonClicked(this);
           return;
         } else {
-          getTexture().setCurrentFrame(1);
+          if (getTexture())
+            getTexture()->setCurrentFrame(1);
           return;
         }
       }
     }
-    getTexture().setCurrentFrame(0);
+    if (getTexture())
+      getTexture()->setCurrentFrame(0);
   }
 
 public:
   Button(const detail::Texture &texture, ButtonHandler *handler)
-      : Control(texture), handler(handler) {
+      : Control(), handler(handler) {
     if (texture.getH() > 0) {
-      getTexture().setHFrames(1);
-      getTexture().setVFrames(3);
-      getTexture().setCurrentFrame(0);
+      SetTexture(texture);
+      getTexture()->setHFrames(1);
+      getTexture()->setVFrames(3);
+      getTexture()->setCurrentFrame(0);
 
       setW(texture.getW());
       setH(texture.getH() / 3);

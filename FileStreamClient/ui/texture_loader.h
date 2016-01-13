@@ -59,6 +59,10 @@ public:
     // We need to get the file path for this thing.
     if (textures.find(name) == textures.end() && name.empty()) {
       textures[name] = new detail::Texture(0, 0, nullptr);
+    } else if (textures.find(name) == textures.end() && !name.empty()) {
+      // Check if this is a color texture.
+      int color = atoi(name.c_str());
+      textures[name] = new detail::Texture(color, 1, 1, nullptr);
     }
 
     return *textures[name];

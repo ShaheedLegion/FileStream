@@ -226,9 +226,9 @@ protected:
 // Declaration and partial implementation.
 class Renderer {
 public:
+  std::string uiName;
   detail::RendererThread updateThread;
   detail::RendererSurface screen;
-
   bool bRunning;
 
   void SetBuffer(unsigned char *buffer, HDC scrDC, HDC memDC) {
@@ -239,8 +239,9 @@ public:
   void SetDirection(int direction) { screen.SetDirection(direction); }
 
 public:
-  Renderer(const char *const className, LPTHREAD_START_ROUTINE callback,
-           detail::IBitmapRenderer *renderer, bool showConsole);
+  Renderer(const std::string &className, const std::string &uiName,
+           LPTHREAD_START_ROUTINE callback, detail::IBitmapRenderer *renderer,
+           bool showConsole);
 
   ~Renderer() {
     updateThread.Join();
@@ -250,6 +251,8 @@ public:
   bool IsRunning() { return bRunning; }
 
   void SetRunning(bool bRun) { bRunning = bRun; }
+
+  const std::string &getUIName() const { return uiName; }
 };
 
 // Here we declare the functions and variables used by the renderer instance
@@ -359,9 +362,11 @@ BOOL CALLBACK MonitorEnumProc(HMONITOR hMonitor, HDC hdcMonitor,
 } // namespace forward
 
 // Implementation of the renderer functions.
-Renderer::Renderer(const char *const className, LPTHREAD_START_ROUTINE callback,
+Renderer::Renderer(const std::string &className, const std::string &uiName,
+                   LPTHREAD_START_ROUTINE callback,
                    detail::IBitmapRenderer *renderer, bool showConsole)
-    : screen(_WIDTH, _HEIGHT, _BPP, renderer), updateThread(callback) {
+    : uiName(uiName), screen(_WIDTH, _HEIGHT, _BPP, renderer),
+      updateThread(callback) {
   forward::g_renderer = this;
 
   HDC windowDC;
@@ -369,7 +374,7 @@ Renderer::Renderer(const char *const className, LPTHREAD_START_ROUTINE callback,
   WNDCLASSEX wndclass = {sizeof(WNDCLASSEX), CS_DBLCLKS,
                          forward::WindowProcedure, 0, 0, GetModuleHandle(0),
                          LoadIcon(0, IDI_APPLICATION), LoadCursor(0, IDC_ARROW),
-                         HBRUSH(COLOR_WINDOW + 1), 0, className,
+                         HBRUSH(COLOR_WINDOW + 1), 0, className.c_str(),
                          LoadIcon(0, IDI_APPLICATION)};
   if (RegisterClassEx(&wndclass)) {
     HWND window = 0;
@@ -396,9 +401,9 @@ Renderer::Renderer(const char *const className, LPTHREAD_START_ROUTINE callback,
       displayRC.right = displayRC.left + _WW;
       displayRC.bottom = displayRC.top + _WH;
 
-      window = CreateWindowEx(0, className, className, WS_POPUPWINDOW,
-                              displayRC.left, displayRC.top, _WW, _WH, 0, 0,
-                              GetModuleHandle(0), 0);
+      window = CreateWindowEx(0, className.c_str(), className.c_str(),
+                              WS_POPUPWINDOW, displayRC.left, displayRC.top,
+                              _WW, _WH, 0, 0, GetModuleHandle(0), 0);
     }
     if (window) {
 
