@@ -1,0 +1,453 @@
+// ChatServer.cpp : Defines the entry point for the console application.
+//
+
+#define WIN32_LEAN_AND_MEAN
+#include <stdio.h>
+#include <iostream>
+#include <WinSock2.h>
+#include <Windows.h>
+
+#include <vector>
+
+#include "../../chat_common.hpp"
+
+#pragma comment(lib, "wsock32")
+
+#if BROADCAST_IP
+#define TIMER_ID 2635
+#endif // BROADCAST_IP
+
+#define SOCK_MSG_ID 1045
+
+DWORD WINAPI ListenClient(LPVOID param);
+
+namespace exec {
+
+struct SocketFileData {
+  std::string file_name;
+  FILE *file;
+
+  SocketFileData() : file(nullptr) {}
+};
+
+struct SocketData {
+  SOCKET socket;
+  std::string alias;
+  chat_common::PacketQueue queue;
+  SocketFileData openFile;
+};
+
+class AutoLocker {
+  CRITICAL_SECTION &m_sec;
+
+public:
+  AutoLocker(CRITICAL_SECTION &csec) : m_sec(csec) {
+    EnterCriticalSection(&m_sec);
+  }
+
+  ~AutoLocker() { LeaveCriticalSection(&m_sec); }
+};
+
+} // namespace exec
+
+namespace net {
+
+class NetClient {
+private:
+  HWND m_window;
+  SOCKET m_socket;
+  std::vector<exec::SocketData> m_clientSockets;
+  HANDLE m_clientThread;
+  CRITICAL_SECTION m_mutex;
+  CRITICAL_SECTION m_runMutex;
+
+  char m_buffer[chat_common::chat_buf_size];
+
+  std::string m_ipAddress;
+  int m_portNumber;
+
+  bool m_running;
+
+  std::vector<chat_common::Packet> serverMessages;
+
+public:
+  std::vector<exec::SocketData> &GetClientSockets() { return m_clientSockets; }
+
+  void GetClientSocketsCopy(std::vector<exec::SocketData> &sockets) {
+    exec::AutoLocker locker(m_mutex);
+    sockets = m_clientSockets;
+  }
+
+  void GetServerMessages(std::vector<chat_common::Packet> &messages) {
+    exec::AutoLocker locket(m_mutex);
+    messages = serverMessages;
+    serverMessages.clear();
+  }
+
+  void RemoveSockets(const std::vector<exec::SocketData> &sockets) {
+
+    exec::AutoLocker locker(m_mutex);
+
+    for (exec::SocketData s : sockets) {
+      auto i = m_clientSockets.begin(), e = m_clientSockets.end();
+      for (; i != e; ++i) {
+        if (i->socket == s.socket) {
+          ::closesocket(s.socket);
+
+          std::string message(s.alias);
+          message.append(" - has left the room.");
+          chat_common::Packet packet{
+              {chat_common::LEAVE, 1, 0, 0, message.length()}, message};
+          serverMessages.push_back(packet);
+          m_clientSockets.erase(i);
+          break;
+        }
+      }
+    }
+  }
+
+  void SetAlias(SOCKET sock, const std::string &alias) {
+    exec::AutoLocker locker(m_mutex);
+
+    for (exec::SocketData &s : m_clientSockets) {
+      if (s.socket == sock) {
+        s.alias = alias;
+
+        std::string message(s.alias);
+        message.append(" - has joined the room.");
+        chat_common::Packet packet{{chat_common::JOIN, 1, 0, 0, message.length()},
+                                   message};
+        serverMessages.push_back(packet);
+        return;
+      }
+    }
+  }
+
+  void HandleFileTransfer(SOCKET sock, chat_common::Packet& packet) {
+  exec::AutoLocker locker(m_mutex);
+
+  for (exec::SocketData & s : m_clientSockets) {
+	  if (s.socket == sock) {
+	    // Search through
+	  }
+  }
+
+  }
+
+  bool IsRunning() {
+    bool run = false;
+    {
+      exec::AutoLocker locker(m_runMutex);
+      run = m_running;
+    }
+    return run;
+  }
+
+  char *GetBuffer() { return m_buffer; }
+
+  NetClient(HWND window)
+      : m_window(window), m_portNumber(0), m_clientThread(INVALID_HANDLE_VALUE),
+        m_running(true) {
+    InitializeCriticalSection(&m_mutex);
+    InitializeCriticalSection(&m_runMutex);
+
+    WSADATA w;
+    int error = WSAStartup(0x0202, &w); // Fill in WSA info
+
+    if (error) { // there was an error
+      std::cout << "Could not initialize Winsock." << std::endl;
+      throw "Could not initialize WinSock";
+    }
+    if (w.wVersion != 0x0202) { // wrong WinSock version!
+      WSACleanup();             // unload ws2_32.dll
+      std::cout << "Wrong Winsock version." << std::endl;
+      throw "Incorrect WinSock version.";
+    }
+
+    { // Get local IP's - useful for phones.
+      char ac[80];
+      if (gethostname(ac, sizeof(ac)) == SOCKET_ERROR) {
+        std::cout << "Error " << WSAGetLastError()
+                  << " when getting local host name." << std::endl;
+        throw "Could not get local host name.";
+      } else {
+
+        struct hostent *phe = gethostbyname(ac);
+        if (phe == 0) {
+          std::cout << "Bad host lookup." << std::endl;
+          throw "Bad host lookup.";
+        } else {
+
+          // Print only the first address.
+          for (int i = 0; phe->h_addr_list[i] != 0; ++i) {
+            struct in_addr addr;
+            memcpy(&addr, phe->h_addr_list[i], sizeof(struct in_addr));
+            std::cout << "IP Address " << i << ": " << inet_ntoa(addr)
+                      << std::endl;
+
+            m_ipAddress = inet_ntoa(addr);
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  ~NetClient() {
+    // First we need to wait for the thread to finish.
+    Disconnect();
+    if (m_clientThread != INVALID_HANDLE_VALUE) {
+      {
+        exec::AutoLocker locker(m_runMutex);
+        m_running = false;
+      }
+      WaitForSingleObject(m_clientThread, INFINITE);
+    }
+    DeleteCriticalSection(&m_mutex);
+    DeleteCriticalSection(&m_runMutex);
+  }
+
+  void Listen(int portNo) {
+    m_portNumber = portNo;
+    SOCKADDR_IN addr; // the address structure for a TCP socket
+
+    addr.sin_family = AF_INET;                // Address family Internet
+    addr.sin_port = htons(m_portNumber);      // Assign port to this socket
+    addr.sin_addr.s_addr = htonl(INADDR_ANY); // No destination
+
+    m_socket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP); // Create socket
+
+    if (m_socket == INVALID_SOCKET) {
+      std::cout << "Could not create socket." << std::endl;
+      throw "Could not create socket";
+    }
+
+    if (bind(m_socket, (LPSOCKADDR)&addr, sizeof(addr)) ==
+        SOCKET_ERROR) // Try binding
+    {                 // error
+      std::cout << "Could not bind to IP." << std::endl;
+      throw "Could not bind to IP";
+    }
+
+    listen(m_socket, 10); // Start listening
+    WSAAsyncSelect(m_socket, m_window, SOCK_MSG_ID,
+                   FD_CLOSE | FD_ACCEPT); // Switch to Non-Blocking mode
+
+    std::cout << "Listening on port " << m_portNumber << std::endl;
+  }
+
+  void Disconnect() { ::closesocket(m_socket); }
+
+  void HandleSocketMessage(LPARAM lp) {
+    switch (lp) {
+    case FD_CLOSE: // Lost connection
+      std::cout << "Listen socket closed." << std::endl;
+      Disconnect();
+      Listen(m_portNumber);
+      break;
+
+    case FD_ACCEPT: // Connection request
+    {
+      SOCKADDR_IN from;
+      int fromlen = sizeof(from);
+      SOCKET clientSocket =
+          accept(m_socket, (struct sockaddr *)&from, &fromlen);
+
+      std::cout << "Connection from [" << inet_ntoa(from.sin_addr)
+                << "] accepted" << std::endl;
+
+      // Start the receiving thread if it's not running.
+      if (m_clientThread == INVALID_HANDLE_VALUE) {
+        DWORD clientThreadId;
+        m_clientThread = CreateThread(nullptr, 0, ListenClient, (LPVOID) this,
+                                      0, &clientThreadId);
+      }
+
+      // Spend the least amount of time in the locked state.
+      exec::AutoLocker locker(m_mutex);
+      m_clientSockets.push_back(exec::SocketData{clientSocket, ""});
+    } break;
+    }
+  }
+
+#if BROADCAST_IP
+  void SendIP() {
+    SOCKET s = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    if (s == -1) {
+      std::cout << "Error in creating socket" << std::endl;
+      throw "Could not create broadcast socket.";
+    }
+
+    char opt = 1;
+    setsockopt(s, SOL_SOCKET, SO_BROADCAST, (char *)&opt, sizeof(char));
+
+    SOCKADDR_IN brdcastaddr;
+    memset(&brdcastaddr, 0, sizeof(brdcastaddr));
+    brdcastaddr.sin_family = AF_INET;
+    brdcastaddr.sin_port = htons(m_portNumber - 1);
+    brdcastaddr.sin_addr.s_addr = INADDR_BROADCAST;
+
+    int len = sizeof(brdcastaddr);
+    int ret = sendto(s, m_ipAddress.c_str(), m_ipAddress.length(), 0,
+                     (sockaddr *)&brdcastaddr, len);
+    if (ret < 0) {
+      std::cout << "Error broadcasting to the clients" << std::endl;
+      throw "Error broadcasting to clients.";
+    } else if ((unsigned)ret < m_ipAddress.length()) {
+      std::cout << "Not all data broadcasted to the clients" << std::endl;
+      throw "Could not broadcast all data.";
+    }
+
+    ::closesocket(s);
+  }
+#endif /// BROADCAST_IP
+};
+
+// Global netclient, useful for windowing stuff later.
+NetClient *g_netClient = nullptr;
+
+} // namespace net
+
+// Here we declare the functions and variables used by the renderer instance
+namespace forward {
+long __stdcall WindowProcedure(HWND window, unsigned int msg, WPARAM wp,
+                               LPARAM lp) {
+  switch (msg) {
+  case WM_DESTROY:
+
+#if BROADCAST_IP
+    KillTimer(window, TIMER_ID);
+#endif // BROADCAST_IP
+
+    PostQuitMessage(0);
+    return 0L;
+
+#if BROADCAST_IP
+  case WM_TIMER: {
+    if (wp == TIMER_ID) {
+      // This is the timer for the window boradcast.
+      if (net::g_netClient != nullptr) {
+        net::g_netClient->SendIP();
+      }
+    }
+  } break;
+#endif // BROADCAST_IP
+
+  // Winsock related message...
+  case SOCK_MSG_ID: {
+    if (net::g_netClient != nullptr) {
+      net::g_netClient->HandleSocketMessage(lp);
+    }
+  } break;
+
+  default:
+    return DefWindowProc(window, msg, wp, lp);
+  }
+
+  return 0;
+}
+
+} // namespace forward
+
+struct PacketHeader {
+public:
+  unsigned char messagetype;
+  unsigned char messageparts;
+  unsigned char flags;
+  unsigned short messagelen;
+};
+
+// Thread function which handles client communications.
+DWORD WINAPI ListenClient(LPVOID param) {
+  net::NetClient *client = reinterpret_cast<net::NetClient *>(param);
+  if (client == nullptr) {
+    std::cout << "Could not get client pointer in listen thread." << std::endl;
+    return 0;
+  }
+
+  int result = 0;
+  //char *recvbuf = client->GetBuffer();
+  //int recvbuflen = chat_common::chat_buf_size;
+
+  // Receive until the peer shuts down the connection
+  do {
+    std::vector<exec::SocketData>& sockets(client->GetClientSockets());
+    std::vector<exec::SocketData> deadConnections;
+
+    std::vector<chat_common::Packet> messages;
+    client->GetServerMessages(messages);
+
+    for (exec::SocketData &s : sockets) {
+
+      s.queue.ProcessQueue(messages, s.socket);
+
+      if (bytesRead <= 0 && WSAGetLastError() != WSAEWOULDBLOCK) {
+        std::cout << "Socket has been closed." << std::endl;
+        deadConnections.push_back(s);
+      }
+    }
+
+    if (!messages.empty()) {
+      char buf[chat_common::chat_buf_size];
+      for (exec::SocketData s : sockets) {
+        for (auto i : messages) {
+          if (i.hdr.messagetype == chat_common::JOIN && s.alias.empty()) {
+            client->SetAlias(s.socket, i.msg);
+            continue;
+		  }
+          memcpy(buf, &i.hdr, chat_common::PacketHeaderSize);
+          memcpy(buf + chat_common::PacketHeaderSize, i.msg.c_str(),
+                 i.msg.length());
+          send(s.socket, buf, chat_common::PacketHeaderSize + i.msg.length(),
+               0);
+        }
+      }
+    }
+
+    if (!deadConnections.empty())
+      client->RemoveSockets(deadConnections);
+    Sleep(10);
+  } while (result >= 0 && client->IsRunning());
+
+  // shutdown the connections since we're done
+  std::vector<exec::SocketData> sockets;
+  client->GetClientSocketsCopy(sockets);
+  client->RemoveSockets(sockets);
+  return 1;
+}
+
+int main(int argc, char *argv[]) {
+  const char *m_className = "mouse_server";
+
+  WNDCLASSEX wndclass = {sizeof(WNDCLASSEX), CS_DBLCLKS,
+                         forward::WindowProcedure, 0, 0, GetModuleHandle(0),
+                         LoadIcon(0, IDI_APPLICATION), LoadCursor(0, IDC_ARROW),
+                         HBRUSH(COLOR_WINDOW + 1), 0, m_className,
+                         LoadIcon(0, IDI_APPLICATION)};
+
+  if (RegisterClassEx(&wndclass)) {
+    HWND window = CreateWindowEx(0, m_className, m_className, WS_POPUPWINDOW, 0,
+                                 0, 0, 0, 0, 0, GetModuleHandle(0), 0);
+
+    if (window) {
+      std::cout << "Showing window " << m_className << std::endl;
+      ShowWindow(window, SW_HIDE);
+
+#if BROADCAST_IP
+      SetTimer(window, TIMER_ID, 1000, nullptr);
+#endif // BROADCAST_IP
+
+      net::g_netClient = new net::NetClient(window);
+      net::g_netClient->Listen(4444);
+
+      MSG msg;
+      while (GetMessage(&msg, 0, 0, 0))
+        DispatchMessage(&msg);
+
+      // Cleanup
+      delete net::g_netClient;
+      net::g_netClient = nullptr;
+    }
+  }
+  return 0;
+}

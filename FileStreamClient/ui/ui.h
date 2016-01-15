@@ -66,6 +66,7 @@ struct DimensionInfo {
 
 // Controls introduce the concept of a heirarchy.
 class Control : public detail::IRenderable, public detail::Interactive {
+protected:
   detail::Texture *texture;
   std::string name;
   std::vector<Control *> children;
@@ -82,27 +83,28 @@ public:
         overflowConstraint(NONE) {}
 
   // Attributes
-  void SetTexture(const detail::Texture &tex) {
+  virtual void SetTexture(const detail::Texture &tex) {
     texture = const_cast<detail::Texture *>(&tex);
     width.minPossible = texture->getW();
     height.minPossible = texture->getH();
   }
 
-  void SetName(const std::string &value) { name = value; }
+  virtual void SetName(const std::string &value) { name = value; }
+  const std::string &getName() const { return name; }
 
-  void SetWidth(const std::string &value) {
+  virtual void SetWidth(const std::string &value) {
     // Parse out the data here.
     width.parse(value);
   }
   DimensionInfo &getWidth() { return width; }
 
-  void SetHeight(const std::string &value) {
+  virtual void SetHeight(const std::string &value) {
     // Parse out the height here.
     height.parse(value);
   }
   DimensionInfo &getHeight() { return height; }
 
-  void SetVAlign(const std::string &value) {
+  virtual void SetVAlign(const std::string &value) {
     // Parse out the v align.
     if (value.empty())
       return;
@@ -114,7 +116,7 @@ public:
   }
   VAlignType getVAlign() const { return vAlign; }
 
-  void SetHAlign(const std::string &value) {
+  virtual void SetHAlign(const std::string &value) {
     // Parse out the h align.
     if (value.empty())
       return;
@@ -126,7 +128,7 @@ public:
   }
   HAlignType getHAlign() const { return hAlign; }
 
-  void SetOrientation(const std::string &value) {
+  virtual void SetOrientation(const std::string &value) {
     // Parse out the orientation here.
     if (value.empty())
       return;
@@ -139,7 +141,7 @@ public:
 
   OrientationType getOrientation() const { return orientation; }
 
-  void SetOverflowConstraint(const std::string &value) {
+  virtual void SetOverflowConstraint(const std::string &value) {
     if (value.empty())
       return;
 
@@ -158,7 +160,7 @@ public:
     children.clear();
   }
 
-  void AddChild(Control *control) { children.push_back(control); }
+  virtual void AddChild(Control *control) { children.push_back(control); }
   std::vector<Control *> &getChildren() { return children; }
 
   virtual void setX(int x) override {
@@ -196,7 +198,8 @@ public:
       child->HandleMouse(mx, my, l, m, r);
   }
 
-  void SetAttribute(const std::string &name, const std::string &value) {
+  // Let derived classes override this safely to add their own attributes.
+  virtual void SetAttribute(const std::string &name, const std::string &value) {
     // Set all attributes here - they can be used by the derived classes.
     if (name == "background") {
       detail::TextureLoader *loader = detail::TextureLoader::getInstance();
@@ -218,6 +221,7 @@ public:
     }
   }
 };
+
 } // namespace ui
 
 #endif // UI_LIB

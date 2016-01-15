@@ -10,19 +10,45 @@
 #include "command_panel.hpp"
 #include "../xml/src/pugixml.hpp"
 #include <map>
+#include <functional>
 
 namespace impl {
 
 class MainPanel : public ui::Control {
-  typedef std::map<std::string, ui::Control *> PanelsType;
-  PanelsType panels;
+  // Lets create a callback type
+
+  typedef std::map<std::string, ui::Control *> ControlsType;
+  ControlsType panels;
+
+  typedef std::map<std::string, std::function<Control *()>> ControlFactory;
+  ControlFactory factory;
+
+  static ui::Panel *createPanel() { return new ui::Panel(); }
+
+  static void RegisterControls(ControlFactory &factory) {
+    // We can immediately add the panels to the map here.
+    // We do this by name instead of by type so that we can identify and
+    // easily find specific controls.
+    // panels["user_name"] = new ui::Input();
+    // panels["chat_text"] = new ui::Input();
+    factory["panel"] = std::bind(createPanel);
+  }
+
+  static ui::Control *CreateControl(const std::string &name,
+                                    ControlFactory &factory) {
+    auto it = factory.find(name);
+    if (it == factory.end())
+      return new ui::Control();
+
+    return ((*it).second)();
+  }
 
   static void CreateDom(Control *parent, pugi::xml_node &node,
-                        PanelsType &panels) {
+                        ControlsType &panels, ControlFactory &factory) {
     std::string nodeName(node.attribute("name").value());
 
     if (panels.find(nodeName) == panels.end())
-      panels[nodeName] = new ui::Control();
+      panels[nodeName] = CreateControl(node.name(), factory);
 
     for (pugi::xml_attribute attr = node.first_attribute(); attr;
          attr = attr.next_attribute())
@@ -32,7 +58,7 @@ class MainPanel : public ui::Control {
 
     for (pugi::xml_node child = node.first_child(); child;
          child = child.next_sibling())
-      CreateDom(panels[nodeName], child, panels);
+      CreateDom(panels[nodeName], child, panels, factory);
   }
 
   static void PositionControls(Control *parent, int x, int y, int w, int h) {
@@ -83,8 +109,8 @@ class MainPanel : public ui::Control {
 
         startX = controlX + controlWidth;
         startY = controlY + controlHeight;
-		pwidth -= controlWidth;
-		pheight -= controlHeight;
+        pwidth -= controlWidth;
+        pheight -= controlHeight;
       }
     } break;
     case ui::STACK: {
@@ -102,16 +128,13 @@ public:
     // Parse the document tree to get at the panel
     // We know the structure of this thing, so we can juse use it.
     static MainPanel *impl{nullptr};
-    if (impl == nullptr) {
+    if (impl == nullptr)
       impl = new MainPanel(uiTree.first_child());
-
-      // We can immediately add the panels to the map here.
-    }
 
     return *impl;
   }
 
-  ~MainPanel() {}
+  virtual ~MainPanel() {}
 
   void update(detail::Uint32 *bits, int w, int h) {
     PositionControls(this, getX(), getY(), w, h);
@@ -122,6 +145,7 @@ public:
 
 private:
   MainPanel(pugi::xml_node &node) : ui::Control() {
+    RegisterControls(factory);
     for (pugi::xml_attribute attr = node.first_attribute(); attr;
          attr = attr.next_attribute())
       SetAttribute(attr.name(), attr.value());
@@ -130,7 +154,7 @@ private:
     // add the child controls .... this should be interesting.
     for (pugi::xml_node child = node.first_child(); child;
          child = child.next_sibling())
-      CreateDom(this, child, panels);
+      CreateDom(this, child, panels, factory);
 
     setX(0);
     setY(0);

@@ -71,21 +71,20 @@ struct RenderBuffer {
 
       int offsetFrame = nheight * cFrame;
 
+
       for (int i = 0; i < nheight; ++i) {
         // Shift buffer to the correct position.
         detail::Uint32 *offsetBuffer = target.bits + ((y + i) * stride) + x;
 
-		detail::RGBA *thisBuffer = reinterpret_cast<detail::RGBA*>(bits + ((i) * width));
-		for (int tx = 0; tx < nwidth; ++tx) {
-			if (thisBuffer->a != 0) {
-				*offsetBuffer = *(reinterpret_cast<detail::Uint32 *>(thisBuffer));
-			}
-			++offsetBuffer;
-			++thisBuffer;
-		}
-
-        //memcpy(offsetBuffer, bits + ((i + offsetFrame) * width),
-        //       nwidth * sizeof(detail::Uint32));
+        detail::RGBA *thisBuffer =
+            reinterpret_cast<detail::RGBA *>(bits + ((i)*width));
+        for (int tx = 0; tx < nwidth; ++tx) {
+          if (thisBuffer->a != 0) {
+            *offsetBuffer = *(reinterpret_cast<detail::Uint32 *>(thisBuffer));
+          }
+          ++offsetBuffer;
+          ++thisBuffer;
+        }
       }
     }
   }
@@ -142,16 +141,19 @@ public:
 
 class Texture : public IRenderable {
   RenderBuffer data;
+  std::string name;
 
 public:
   const RenderBuffer &getData() const { return data; }
 
-  Texture(int w, int h, Uint32 *bits) : data(w, h, bits) {
+  Texture(const std::string &name, int w, int h, Uint32 *bits)
+      : data(w, h, bits), name(name) {
     setW(w);
     setH(h);
   }
 
-  Texture(int color, int w, int h, Uint32 *bits) : data(w, h, bits) {
+  Texture(const std::string &name, int color, int w, int h, Uint32 *bits)
+      : data(w, h, bits), name(name) {
     setW(w);
     setH(h);
 
@@ -165,6 +167,7 @@ public:
   Texture(const Texture &other) : data(other.getData()) {
     setW(data.width);
     setH(data.height);
+    name = other.name;
   }
 
   Uint32 *getBuffer() const { return data.bits; }
