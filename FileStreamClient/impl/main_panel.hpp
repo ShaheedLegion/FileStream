@@ -4,6 +4,7 @@
 
 #include "../ui/button.h"
 #include "../ui/panel.h"
+#include "../ui/text.h"
 #include "../ui/texture_loader.h"
 #include "rendition_panel.hpp"
 #include "chat_input_panel.hpp"
@@ -24,6 +25,7 @@ class MainPanel : public ui::Control {
   ControlFactory factory;
 
   static ui::Panel *createPanel() { return new ui::Panel(); }
+  static ui::Text *createText() { return new ui::Text(); }
 
   static void RegisterControls(ControlFactory &factory) {
     // We can immediately add the panels to the map here.
@@ -32,6 +34,7 @@ class MainPanel : public ui::Control {
     // panels["user_name"] = new ui::Input();
     // panels["chat_text"] = new ui::Input();
     factory["panel"] = std::bind(createPanel);
+    factory["input"] = std::bind(createText);
   }
 
   static ui::Control *CreateControl(const std::string &name,
@@ -73,6 +76,7 @@ class MainPanel : public ui::Control {
     case ui::VERTICAL: {
       // Start laying out from top to bottom.
       for (auto i : parent->getChildren()) {
+
         ui::DimensionInfo &width(i->getWidth());
         ui::DimensionInfo &height(i->getHeight());
         int controlWidth = width.getValue(pwidth);

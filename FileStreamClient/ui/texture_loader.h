@@ -61,7 +61,7 @@ public:
       textures[name] = new detail::Texture(name, 0, 0, nullptr);
     } else if (textures.find(name) == textures.end() && !name.empty()) {
       // Check if this is a color texture.
-      int color = atoi(name.c_str());
+      int color = strtol(name.c_str(), nullptr, 16);
       textures[name] = new detail::Texture(name, color, 1, 1, nullptr);
     }
 

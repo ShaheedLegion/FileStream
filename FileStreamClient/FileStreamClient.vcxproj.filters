@@ -89,5 +89,8 @@
     <ClInclude Include="xml\src\pugixml.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="ui\text.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

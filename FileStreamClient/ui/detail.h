@@ -11,16 +11,50 @@ struct RGBA {
   unsigned char g;
   unsigned char b;
   unsigned char a;
+
+  bool compare(unsigned char v) {
+    return (r == v) && (g == v) && (b == v) && (a == v);
+  }
 };
 
 struct RenderBuffer {
   int width;
   int height;
+  bool alpha;
   Uint32 *bits;
 
-  RenderBuffer(int w, int h, Uint32 *bits) : width(w), height(h), bits(bits) {}
+  RenderBuffer(int w, int h, Uint32 *bits)
+      : width(w), height(h), alpha(false), bits(bits) {}
   RenderBuffer(const RenderBuffer &other)
-      : width(other.width), height(other.height), bits(other.bits) {}
+      : width(other.width), height(other.height), alpha(other.alpha),
+        bits(other.bits) {}
+
+  void drawRect(detail::Uint32 color, int x, int y, int w, int h) {
+    if (bits == nullptr)
+      return;
+
+    if (x > width || y > height)
+      return;
+
+    if (w <= 0 || h <= 0)
+      return;
+
+    // Now clamp the rectangle to fit into our surface.
+    int rx = x;
+    int ry = y;
+    int rw = w;
+    int rh = h;
+    rx = (rx < 0 ? 0 : rx);
+    ry = (ry < 0 ? 0 : ry);
+
+    for (int ty = ry; ty < ry + rh; ++ty) {
+      detail::Uint32 *alias = bits + ((ty * width) + rx);
+      for (int tx = 0; tx < rw; ++tx) {
+        *alias = color;
+        ++alias;
+      }
+    }
+  }
 
   void render(RenderBuffer &target, int x, int y, int hFrames, int vFrames,
               int cFrame) {
@@ -70,20 +104,50 @@ struct RenderBuffer {
         nheight -= ((y + nheight) - target.height);
 
       int offsetFrame = nheight * cFrame;
+      if (alpha) {
+        for (int i = 0; i < nheight; ++i) {
+          // Shift buffer to the correct position.
+          detail::RGBA *offsetBuffer = reinterpret_cast<detail::RGBA *>(
+              target.bits + ((y + i) * stride) + x);
 
+          detail::RGBA *thisBuffer =
+              reinterpret_cast<detail::RGBA *>(bits + ((i)*width));
+          for (int tx = 0; tx < nwidth; ++tx) {
+            if (!thisBuffer->compare(0)) {
+              float value = static_cast<float>(thisBuffer->a) / 255.0;
 
-      for (int i = 0; i < nheight; ++i) {
-        // Shift buffer to the correct position.
-        detail::Uint32 *offsetBuffer = target.bits + ((y + i) * stride) + x;
+              int valueR = static_cast<int>(
+                               static_cast<float>(offsetBuffer->r) * value) +
+                           thisBuffer->r;
+              int valueG = static_cast<int>(
+                               static_cast<float>(offsetBuffer->g) * value) +
+                           thisBuffer->g;
+              int valueB = static_cast<int>(
+                               static_cast<float>(offsetBuffer->b) * value) +
+                           thisBuffer->b;
 
-        detail::RGBA *thisBuffer =
-            reinterpret_cast<detail::RGBA *>(bits + ((i)*width));
-        for (int tx = 0; tx < nwidth; ++tx) {
-          if (thisBuffer->a != 0) {
-            *offsetBuffer = *(reinterpret_cast<detail::Uint32 *>(thisBuffer));
+              offsetBuffer->r = static_cast<unsigned char>(valueR);
+              offsetBuffer->g = static_cast<unsigned char>(valueG);
+              offsetBuffer->b = static_cast<unsigned char>(valueB);
+            }
+            ++offsetBuffer;
+            ++thisBuffer;
           }
-          ++offsetBuffer;
-          ++thisBuffer;
+        }
+      } else {
+        for (int i = 0; i < nheight; ++i) {
+          // Shift buffer to the correct position.
+          detail::Uint32 *offsetBuffer = target.bits + ((y + i) * stride) + x;
+
+          detail::RGBA *thisBuffer =
+              reinterpret_cast<detail::RGBA *>(bits + ((i)*width));
+          for (int tx = 0; tx < nwidth; ++tx) {
+            if (thisBuffer->a != 0) {
+              *offsetBuffer = *(reinterpret_cast<detail::Uint32 *>(thisBuffer));
+            }
+            ++offsetBuffer;
+            ++thisBuffer;
+          }
         }
       }
     }
@@ -150,6 +214,11 @@ public:
       : data(w, h, bits), name(name) {
     setW(w);
     setH(h);
+
+    if (data.bits == nullptr) {
+      data.bits = new Uint32[w * h];
+      memset(data.bits, 0, w * h * sizeof(detail::Uint32));
+    }
   }
 
   Texture(const std::string &name, int color, int w, int h, Uint32 *bits)
@@ -171,6 +240,7 @@ public:
   }
 
   Uint32 *getBuffer() const { return data.bits; }
+  void setAlpha(bool alpha) { data.alpha = alpha; }
 
   virtual void render(RenderBuffer &target) override {
     data.render(target, getX(), getY(), getHFrames(), getVFrames(),

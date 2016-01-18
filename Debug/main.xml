@@ -3,8 +3,8 @@
 <ui name="application" background="ui\bg.graw">
   <panel name="login" label="Login" label_background="ui\label_bg.graw" label_width="100%" label_height="auto"
          width="100%" height="100%" valign="top" background="ui\login\bg.graw" orientation="vertical">
-    <input name="user_name" width="100%" height="40px" background="0xffffffff" />
-    <check name="auto_login" width="auto" height="auto" text="Remember me?" />
+    <input name="user_name" width="100%" height="40px" valign="middle" background="0xffffff" />
+    <check name="auto_login" width="auto" height="auto" valign="middle" text="Remember me?" />
   </panel>
   
 <!--

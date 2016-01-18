@@ -61,7 +61,7 @@
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>../zlibstatic.lib;libs/pugixmlsd.lib;libs/cairo.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>../zlibstatic.lib;libs/pugixmlsd.lib;libs/cairo.lib;libs/pixman.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -104,6 +104,7 @@
     <ClInclude Include="ui\panel.h" />
     <ClInclude Include="ui\paths.h" />
     <ClInclude Include="ui\singleton.h" />
+    <ClInclude Include="ui\text.h" />
     <ClInclude Include="ui\texture_loader.h" />
     <ClInclude Include="ui\ui.h" />
     <ClInclude Include="ui\ui_impl.hpp" />

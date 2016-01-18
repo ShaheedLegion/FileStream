@@ -4,6 +4,7 @@
 
 #include "detail.h"
 #include "texture_loader.h"
+#include "cairo/src/cairo.h"
 #include <vector>
 
 namespace ui {
@@ -57,10 +58,80 @@ struct DimensionInfo {
       // get the percentage from the given value
       float fvalue =
           (static_cast<float>(value) / 100.0f) * static_cast<float>(from);
-      return (static_cast<int>(fvalue) > minPossible
+      return (static_cast<int>(fvalue) < minPossible
                   ? minPossible
                   : static_cast<int>(fvalue));
     }
+  }
+};
+
+// We allow for anything to render text onto a texture using this singleton.
+class TextRenderer {
+  TextRenderer() {}
+
+public:
+  static TextRenderer *getInstance() {
+    static TextRenderer *instance = nullptr;
+
+    if (instance == nullptr)
+      instance = new TextRenderer();
+
+    return instance;
+  }
+
+  ~TextRenderer() {}
+
+  bool drawText(detail::Texture *img, const std::string &text, int x, int y,
+                int w, int h) {
+    // Next set up cairo and provide this buffer to it.
+    // Try to be smart about the size of the surface.
+    cairo_surface_t *surf = cairo_image_surface_create_for_data(
+        reinterpret_cast<unsigned char *>(img->getBuffer()),
+        CAIRO_FORMAT_ARGB32, w, h, 4 * w);
+
+    if (cairo_surface_status(surf) != CAIRO_STATUS_SUCCESS)
+      return false;
+
+    cairo_t *cr = cairo_create(surf);
+    if (cairo_status(cr) != CAIRO_STATUS_SUCCESS)
+      return false;
+
+    cairo_set_antialias(cr, CAIRO_ANTIALIAS_BEST);
+
+    cairo_rectangle(cr, 0.0, 0.0, w, h);
+    cairo_set_source_rgb(cr, 0.8, 0.8, 0.8);
+    cairo_fill(cr);
+
+    cairo_move_to(cr, x, y);
+    cairo_set_font_size(cr, 30);
+    cairo_select_font_face(cr, "cairo: cursive", CAIRO_FONT_SLANT_NORMAL,
+                           CAIRO_FONT_WEIGHT_NORMAL);
+    cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 0.9);
+
+    cairo_show_text(cr, text.c_str());
+
+    // clear out the stuff....
+    cairo_surface_destroy(surf);
+    cairo_destroy(cr);
+
+    // swap out the byte values [ARGB -> RGBA].
+    int len = w * h;
+    detail::Uint32 *alias = img->getBuffer();
+    while (len) {
+      unsigned char *np = (unsigned char *)alias;
+      unsigned char alpha = np[0];
+      unsigned int bigAlpha = alpha;
+      // bigAlpha <<= 24;
+
+      detail::Uint32 fixed = *alias << 8;
+      fixed |= bigAlpha;
+      *alias = fixed;
+
+      ++alias;
+      --len;
+    }
+
+    img->setAlpha(true);
   }
 };
 
