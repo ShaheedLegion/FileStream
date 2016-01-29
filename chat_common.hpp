@@ -10,32 +10,13 @@
 
 #include "print_structs.hpp"
 
+//#define DEBUG_MODE 1
+//#define USE_FLATE 1
+
+#ifdef USE_FLATE
 #include "zlib.h"
 #pragma comment(lib, "../zlibstatic.lib")
-
-/*
-Sequence of events.
-
-Server is running.
-Client connects.
-
-State 1:
-  Client sends alias.
-  Server acks the interrogation with a message.
-
-State 2:
-  Client sends query packet.
-  Server acks the query with a response.
-
-
-State 3:
-  Client sends message.
-  Server acks message with a response.
-
-State 4:
-  Client sends a private message.
-  Server acks the private message with a response.
-*/
+#endif
 
 #if 0
 So, the client now responds to the server ack messages.
@@ -45,7 +26,11 @@ The servers ProcessMessages function should now change to be able to push
 outbound messages into a special queue for each client.
 
 There should also be a global queue for clients.
+
+// App client id.
+//558136167287-f1lesdcasa71hikh107b6dq7qto7nui8.apps.googleusercontent.com
 #endif // 0
+
 #pragma comment(lib, "Ws2_32.lib")
 #pragma comment(lib, "Mswsock.lib")
 
@@ -83,6 +68,14 @@ namespace comms {
 #define PKT_FILE_IN 0x00014
 #define PKT_FILE_IN_ACK 0x00015
 
+// Server sending a new join message to the client.
+#define PKT_MSG_JOIN 0x00016
+#define PKT_MSG_JOIN_ACK 0x00017
+
+// Server sending a leave message to the client.
+#define PKT_MSG_LEAVE 0x00018
+#define PKT_MSG_LEAVE_ACK 0x00019
+
 std::string CharToMessageType(unsigned short msgtype) {
   switch (msgtype) {
   case PKT_ALIAS:
@@ -113,6 +106,14 @@ std::string CharToMessageType(unsigned short msgtype) {
     return "file_in";
   case PKT_FILE_IN_ACK:
     return "file_in_ack";
+  case PKT_MSG_JOIN:
+    return "msg_join";
+  case PKT_MSG_JOIN_ACK:
+    return "msg_join_ack";
+  case PKT_MSG_LEAVE:
+    return "msg_leave";
+  case PKT_MSG_LEAVE_ACK:
+    return "msg_leave_ack";
   }
   return "unk";
 }
@@ -146,7 +147,14 @@ unsigned short MessageTypeToChar(const std::string &type) {
     return PKT_FILE_IN;
   if (type == "file_in_ack")
     return PKT_FILE_IN_ACK;
-
+  if (type == "msg_join")
+    return PKT_MSG_JOIN;
+  if (type == "msg_join_ack")
+    return PKT_MSG_JOIN_ACK;
+  if (type == "msg_leave")
+    return PKT_MSG_LEAVE;
+  if (type == "msg_leave_ack")
+    return PKT_MSG_LEAVE_ACK;
   return 0;
 }
 
@@ -216,7 +224,7 @@ void AssignHeader(Header &header, char *data) {
   }
 }
 
-void ReadSocketFully(SOCKET s, char *stack, std::vector<char> &data) {
+bool ReadSocketFully(SOCKET s, char *stack, std::vector<char> &data) {
   // Read fully from the client.
   int bytesRead{0};
   do {
@@ -225,8 +233,11 @@ void ReadSocketFully(SOCKET s, char *stack, std::vector<char> &data) {
       const char *start = stack;
       const char *end = stack + bytesRead;
       data.insert(data.end(), start, end);
+    } else if (bytesRead == SOCKET_ERROR) {
+      return false;
     }
   } while (bytesRead > 0);
+  return true;
 }
 
 void QueueCompletePackets(std::vector<char> &data, packetQueue &out) {
@@ -235,8 +246,10 @@ void QueueCompletePackets(std::vector<char> &data, packetQueue &out) {
   while (packetDataSize >= HeaderSize) {
     Header hdr;
     AssignHeader(hdr, &data[0]);
+#ifdef DEBUG_MODE
     std::cout << "Got packet - type[" << hdr.type << "] len[" << hdr.len
               << "] seq[" << hdr.sequence << "]" << std::endl;
+#endif
     if (packetDataSize >=
         static_cast<int>(HeaderSize + (hdr.len * sizeof(int)))) {
       // We have a valid packet/s.
@@ -250,10 +263,14 @@ void QueueCompletePackets(std::vector<char> &data, packetQueue &out) {
       int dataProcessed = (HeaderSize + hdr.len * sizeof(int));
       data.erase(data.begin(), data.begin() + dataProcessed);
       packetDataSize = data.size();
+#ifdef DEBUG_MODE
       std::cout << "Processed data [" << packetDataSize << "]" << std::endl;
+#endif
     } else {
-      // Need to keep this, it's a partial packet.
+// Need to keep this, it's a partial packet.
+#ifdef DEBUG_MODE
       std::cout << "Had partial packet" << std::endl;
+#endif
       break; // Could not process this.
     }
   }
@@ -261,6 +278,7 @@ void QueueCompletePackets(std::vector<char> &data, packetQueue &out) {
 
 }; // namespace comms
 
+#ifdef USE_FLATE
 namespace flate {
 struct FlateResult {
   int inDataSize;
@@ -316,11 +334,13 @@ void DeflateData(FlateResult &result) {
 }
 
 }; // namespace flate
+#endif
 
 namespace net {
 
 // Server thread functions.
 DWORD WINAPI ServerAcceptConnections(LPVOID param);
+DWORD WINAPI ServerPingCovalent(LPVOID param);
 DWORD WINAPI ServerCommsConnections(LPVOID param);
 
 // Client thread functions.
@@ -449,7 +469,12 @@ public:
   ~NetCommon() {}
 
   void SendPacket(SOCKET s, const comms::Packet &packet) {
-    // Push the entire packet header + data to the vector.
+// Push the entire packet header + data to the vector.
+#ifdef DEBUG_MODE
+    std::cout << "Sending packet [" << packet.hdr.type << "]["
+              << packet.data.length() << "][" << packet.data << "]"
+              << std::endl;
+#endif
     std::vector<unsigned int> upscaledData;
     upscaledData.push_back(htonl(packet.hdr.type));
     upscaledData.push_back(htonl(packet.hdr.flags));
@@ -465,6 +490,17 @@ public:
 
     int bytes = send(s, reinterpret_cast<char *>(&upscaledData[0]),
                      upscaledData.size() * sizeof(unsigned int), 0);
+
+// Next step is to print out the upscaled data as a sequency of bytes.
+#ifdef DEBUG_MODE
+    std::cout << "Sent packet response [";
+    unsigned char *packetData =
+        reinterpret_cast<unsigned char *>(&upscaledData[0]);
+    for (int i = 0; i < (upscaledData.size() * sizeof(unsigned int)); ++i)
+      std::cout << (int)packetData[i];
+    std::cout << "]" << std::endl;
+#endif
+
     if (bytes <= 0) {
       // Error occurred, we need to mark this socket as closed.
       m_closedSockets.push_back(s);
@@ -473,24 +509,42 @@ public:
   }
 
   // Partially Lock Free
-  void HandleClosedSockets(const std::vector<SocketData> &clients,
-                           std::vector<comms::Packet> &out,
-                           std::vector<SOCKET> &sockets) {
+  void HandleClosedSockets(std::vector<SocketData> &clients) {
+    std::vector<comms::PacketInfo> out;
     for (auto i : m_closedSockets) {
       for (unsigned int j = 0; j < clients.size(); ++j) {
         if (clients[j].socket == i) {
           std::string alias = clients[j].alias;
-          alias.append(" - has taken the blue pill.");
-          comms::Packet goodbye{{PKT_MSG, 0, 0, 0, alias.length(), 0, 0},
-                                alias};
-          out.push_back(goodbye);
+          alias.append("|_+_| - has taken the blue pill.");
+
+          comms::PacketInfo bye{
+              {{PKT_MSG_LEAVE, 0, 0, 0, alias.length(), 0, 0}, alias},
+              false,
+              0};
+
+          out.push_back(bye);
           break;
         }
       }
     }
 
-    sockets = m_closedSockets;
+    for (auto a = clients.begin(); a != clients.end(); ++a) {
+      for (auto c = m_closedSockets.begin(); c != m_closedSockets.end(); ++c) {
+        if (a->socket == *c) {
+          a = clients.erase(a);
+        }
+      }
+    }
+
     m_closedSockets.clear();
+
+    if (out.size()) {
+      for (auto o : out) {
+        for (auto &i : clients) {
+          i.outboundMessages.push_back(o);
+        }
+      }
+    }
   }
 
 }; // NetCommon
@@ -500,6 +554,7 @@ class NetServer : public NetCommon {
 private:
   HANDLE acceptThread;
   HANDLE commsThread;
+  HANDLE covalentThread;
   SOCKET m_acceptSocket;
 
   CRITICAL_SECTION m_mutex;
@@ -533,7 +588,9 @@ public:
     for (; it != eit; ++it) {
       if (it->socket == client) {
         std::cout << "Dropping connection from: " << it->ip.c_str();
+#ifdef DEBUG_MODE
         std::cout << "Goodbye: " << it->alias.c_str();
+#endif
         m_clients.erase(it);
         break;
       }
@@ -571,9 +628,10 @@ public:
         case PKT_ALIAS: {
           so.alias = msg.packet.data;
           std::string data = msg.packet.data;
-          data.append(" - has taken the red pill.");
-
+#ifdef DEBUG_MODE
           std::cout << "NB. " << data << std::endl;
+#endif
+#ifdef USE_FLATE
           // Compress the response.
           flate::FlateResult compressed(data.c_str(), data.length(),
                                         data.length() * 2);
@@ -584,7 +642,11 @@ public:
                        compressed.outDataSize);
 
           comms::PacketInfo info{
-              {{PKT_MSG, 0, 0, 0, cData.length(), 1, 0}, cData}, false, 0};
+              {{PKT_MSG_JOIN, 0, 0, 0, cData.length(), 1, 0}, cData}, false, 0};
+#else
+          comms::PacketInfo info{
+              {{PKT_MSG_JOIN, 0, 0, 0, data.length(), 1, 0}, data}, false, 0};
+#endif
           // Store the messages for global delivery.
           globalMessages.push_back(info);
 
@@ -626,7 +688,7 @@ public:
               user_list.append(lst_it->ip);
               user_list.append(" : ");
               user_list.append(lst_it->alias);
-              user_list.append("|");
+              user_list.append("|_+_|");
             }
             comms::Packet ack{{PKT_LST_ACK, 0, 0, 0, user_list.length(),
                                msg.packet.hdr.sequence, 0},
@@ -724,12 +786,17 @@ public:
     DWORD commsThreadId;
     commsThread =
         CreateThread(NULL, 0, ServerCommsConnections, this, 0, &commsThreadId);
+
+    DWORD covalentThreadId;
+    covalentThread =
+        CreateThread(NULL, 0, ServerPingCovalent, this, 0, &covalentThreadId);
   }
 
   ~NetServer() {
     // Should wait for the threads to stop
     // Then DeleteCriticalSection(&m_mutex);
   }
+
 }; // NetServer
 
 class NetClient : public NetCommon {
@@ -756,6 +823,7 @@ class NetClient : public NetCommon {
       if (!compressed) {
         m_printQueue.push_back(print::PrintInfo(data, "", false));
       } else {
+#ifdef USE_FLATE
         // Decompress the data.
         std::string pData{data};
         flate::FlateResult decompressed(pData.c_str(), pData.length(),
@@ -765,6 +833,9 @@ class NetClient : public NetCommon {
         iData.assign(reinterpret_cast<char *>(decompressed.outData),
                      decompressed.outDataSize);
         m_printQueue.push_back(print::PrintInfo(iData, "", false));
+#else
+        m_printQueue.push_back(print::PrintInfo(data, "", false));
+#endif
       }
     }
     trigger = true;
@@ -916,9 +987,10 @@ public:
   void AddMessage(const std::string &text) {
     AutoLocker locker(m_mutex);
     std::string data(m_alias);
-    data.append(" : ");
+    data.append("|_+_|");
     data.append(text);
 
+#ifdef USE_FLATE
     // Compress the data.
     flate::FlateResult compressed(data.c_str(), data.length(),
                                   data.length() * 2);
@@ -932,6 +1004,12 @@ public:
         {{PKT_MSG, 0, 0, 0, cData.length(), GetNextSequence(), 0}, cData},
         false,
         0};
+#else
+    comms::PacketInfo info{
+        {{PKT_MSG, 0, 0, 0, data.length(), GetNextSequence(), 0}, data},
+        false,
+        0};
+#endif
     m_threadOutQueue.push_back(info);
   }
 
@@ -1176,6 +1254,8 @@ DWORD WINAPI ServerCommsConnections(LPVOID param) {
         comms::ReadSocketFully(i.socket, stack, i.packetData);
         comms::QueueCompletePackets(i.packetData, i.inboundMessages);
       }
+
+      server->HandleClosedSockets(clients);
     }
 
     server->ProcessMessages();
@@ -1200,6 +1280,48 @@ DWORD WINAPI ClientCommsConnection(LPVOID param) {
     client->ProcessQueues();
 
     Sleep(5);
+  }
+
+  return 0;
+}
+
+// Ping the covalent server to notify it of my ip address.
+DWORD WINAPI ServerPingCovalent(LPVOID param) {
+  // Perform the post to my website where it can record my ip address.
+  while (true) {
+    SOCKET Socket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    struct hostent *host;
+    host = gethostbyname("www.shaheedabdol.co.za");
+    if (host == NULL) {
+      DWORD error = WSAGetLastError();
+      std::cout << "Could not resolve host name " << error << std::endl;
+    } else {
+      SOCKADDR_IN SockAddr;
+      SockAddr.sin_port = htons(80);
+      SockAddr.sin_family = AF_INET;
+      SockAddr.sin_addr.s_addr = *((unsigned long *)host->h_addr);
+      std::cout << "Connecting...to covalent." << std::endl;
+
+      if (connect(Socket, (SOCKADDR *)(&SockAddr), sizeof(SockAddr)) != 0) {
+        std::cout << "Could not connect to covalent." << std::endl;
+      } else {
+        std::cout << "Connected to covalent, sending data.";
+        // We connected to covalent, send our ping data.
+        std::string requestHeader;
+        requestHeader.append(
+            "GET "
+            "/covalent.php?register=fs_srv_2635_6253&port=54547&"
+            "timeout=2 HTTP/1.1\r\n");
+        requestHeader.append("Host: www.shaheedabdol.co.za\r\n");
+        requestHeader.append("\r\n");
+
+        std::cout << requestHeader << std::endl;
+
+        send(Socket, requestHeader.data(), requestHeader.size(), NULL);
+      }
+    }
+    closesocket(Socket);
+    Sleep(30000);
   }
 
   return 0;
